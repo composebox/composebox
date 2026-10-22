@@ -1,0 +1,41 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Node / UI build artifacts
+node_modules/
+ui/node_modules/
+ui/dist/*
+!ui/dist/.gitkeep
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local runtime & secrets
+.env
+*.local
+.composebox.auth
+.composebox.secret

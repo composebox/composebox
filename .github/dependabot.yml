@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # Maintain Go backend dependencies
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+
+  # Maintain Svelte & Tailwind frontend dependencies
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    groups:
+      ui-dependencies:
+        patterns:
+          - "*"
+
+  # Maintain Dockerfile base images (Node, Go, Alpine)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-dependencies:
+        patterns:
+          - "*"
+
+  # Maintain GitHub Actions workflow dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"

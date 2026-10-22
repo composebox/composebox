@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'ui/package-lock.json'
+
+      - name: Install & Build UI
+        run: |
+          cd ui
+          npm ci
+          npm run build
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+          check-latest: true
+
+      - name: Run Go Vet & Race Tests
+        run: |
+          go vet ./...
+          go test -v -race -count=1 ./...

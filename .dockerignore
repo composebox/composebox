@@ -1,0 +1,24 @@
+# Git & CI
+.git
+.github
+.gitignore
+
+# Build artifacts & local binaries
+bin/
+ui/node_modules/
+ui/dist/
+*.test
+*.out
+
+# Local runtime state & secrets
+.env
+*.local
+.composebox.auth
+.composebox.secret
+
+# Docs & editor files
+README.md
+Makefile
+.vscode/
+.idea/
+.DS_Store
