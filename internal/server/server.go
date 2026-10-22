@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -154,10 +155,11 @@ func (s *Server) handleListStacks(w http.ResponseWriter, r *http.Request) {
 			defer wg.Done()
 			containers, status, runningCount, err := s.dockerClient.GetContainers(ctx, stacks[idx].Path, stacks[idx].ComposeFile)
 			if err == nil {
-				stacks[idx].Containers = containers
+				declared := stack.GetDeclaredContainers(filepath.Join(stacks[idx].Path, stacks[idx].ComposeFile))
+				stacks[idx].Containers = mergeContainers(containers, declared)
 				stacks[idx].Status = status
-				if len(containers) > stacks[idx].TotalServices {
-					stacks[idx].TotalServices = len(containers)
+				if len(stacks[idx].Containers) > stacks[idx].TotalServices {
+					stacks[idx].TotalServices = len(stacks[idx].Containers)
 				}
 				stacks[idx].RunningCount = runningCount
 			} else {
@@ -183,15 +185,44 @@ func (s *Server) handleGetStack(w http.ResponseWriter, r *http.Request) {
 
 	containers, status, runningCount, err := s.dockerClient.GetContainers(ctx, details.Path, details.ComposeFile)
 	if err == nil {
-		details.Containers = containers
+		declared := stack.GetDeclaredContainers(filepath.Join(details.Path, details.ComposeFile))
+		details.Containers = mergeContainers(containers, declared)
 		details.Status = status
-		if len(containers) > details.TotalServices {
-			details.TotalServices = len(containers)
+		if len(details.Containers) > details.TotalServices {
+			details.TotalServices = len(details.Containers)
 		}
 		details.RunningCount = runningCount
 	}
 
 	respondJSON(w, http.StatusOK, details)
+}
+
+func mergeContainers(live []stack.Container, declared []stack.Container) []stack.Container {
+	if len(live) == 0 {
+		return declared
+	}
+	if len(declared) == 0 {
+		return live
+	}
+
+	result := make([]stack.Container, len(live))
+	copy(result, live)
+
+	existing := make(map[string]bool)
+	for _, c := range live {
+		if c.Service != "" {
+			existing[c.Service] = true
+		}
+		existing[c.Name] = true
+	}
+
+	for _, d := range declared {
+		if !existing[d.Service] && !existing[d.Name] {
+			result = append(result, d)
+		}
+	}
+
+	return result
 }
 
 type saveRequest struct {

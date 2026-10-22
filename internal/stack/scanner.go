@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -127,6 +128,66 @@ func CountServices(composeFilePath string) int {
 		return 0
 	}
 	return len(cfg.Services)
+}
+
+// ServiceConfig represents basic container metadata parsed from a compose file.
+type ServiceConfig struct {
+	ContainerName string `yaml:"container_name"`
+	Image         string `yaml:"image"`
+	Ports         []any  `yaml:"ports"`
+}
+
+// GetDeclaredContainers parses a compose file and returns stub Container structs for defined services.
+func GetDeclaredContainers(composeFilePath string) []Container {
+	data, err := os.ReadFile(composeFilePath)
+	if err != nil {
+		return nil
+	}
+	var cfg struct {
+		Services map[string]ServiceConfig `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+
+	containers := make([]Container, 0, len(cfg.Services))
+	for svcName, svc := range cfg.Services {
+		name := svc.ContainerName
+		if name == "" {
+			name = svcName
+		}
+		var ports []string
+		for _, p := range svc.Ports {
+			switch v := p.(type) {
+			case string:
+				ports = append(ports, v)
+			case int, int64:
+				ports = append(ports, fmt.Sprintf("%d", v))
+			case map[string]any:
+				target := v["target"]
+				pub := v["published"]
+				if pub != nil && target != nil {
+					ports = append(ports, fmt.Sprintf("%v:%v", pub, target))
+				} else if target != nil {
+					ports = append(ports, fmt.Sprintf("%v", target))
+				}
+			}
+		}
+		containers = append(containers, Container{
+			Name:    name,
+			Service: svcName,
+			Image:   svc.Image,
+			Status:  "Stopped",
+			State:   "stopped",
+			Ports:   strings.Join(ports, ", "),
+		})
+	}
+
+	sort.Slice(containers, func(i, j int) bool {
+		return containers[i].Service < containers[j].Service
+	})
+
+	return containers
 }
 
 // SaveFiles writes updated compose and .env contents to disk atomically.

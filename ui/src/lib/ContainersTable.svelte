@@ -5,7 +5,7 @@
 <div class="flex-1 overflow-auto p-3 sm:p-5">
   {#if containers.length === 0}
     <div class="rounded-lg border border-zinc-800 bg-zinc-900/40 py-10 text-center text-xs text-zinc-500">
-      No active containers found
+      No containers or services defined in compose file
     </div>
   {:else}
     <!-- Mobile Card List (< sm) -->
