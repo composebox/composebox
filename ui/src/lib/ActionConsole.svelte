@@ -43,7 +43,7 @@
           <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
         </svg>
         <span class="text-xs font-medium text-zinc-200">
-          Action Console: <span class="font-mono text-zinc-400">{action || 'command'}</span>
+          Action Console: <span class="font-mono text-zinc-400">{action || 'idle'}</span>
         </span>
 
         {#if status === 'running'}
@@ -66,6 +66,13 @@
           >
             <span class="h-1.5 w-1.5 rounded-full bg-red-400"></span>
             failed
+          </span>
+        {:else if status === 'idle'}
+          <span
+            class="inline-flex items-center gap-1 text-[10px] text-zinc-400 bg-zinc-800/60 border border-zinc-700/60 px-1.5 py-0.2 rounded-full font-mono"
+          >
+            <span class="h-1.5 w-1.5 rounded-full bg-zinc-500"></span>
+            ready
           </span>
         {/if}
       </div>
@@ -113,7 +120,7 @@
         bind:this={termEl}
         class="flex-1 p-3.5 font-mono text-xs leading-relaxed text-zinc-300 overflow-y-auto whitespace-pre-wrap select-text bg-zinc-950/95"
       >
-        {logs || 'Executing action...'}
+        {logs || 'No action executed yet. Output from Update, Start, Restart, and Stop actions will stream here.'}
       </div>
     {/if}
   </div>

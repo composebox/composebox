@@ -32,7 +32,7 @@
   let consoleOpen = $state(false);
   let consoleAction = $state('');
   let consoleLogs = $state('');
-  let consoleStatus = $state('running'); // 'running' | 'success' | 'error'
+  let consoleStatus = $state('idle'); // 'idle' | 'running' | 'success' | 'error'
 
   let composeContent = $state('');
   let envContent = $state('');
@@ -42,6 +42,7 @@
   let newStackModalOpen = $state(false);
   let newStackName = $state('');
   let deleteModalOpen = $state(false);
+  let stopModalOpen = $state(false);
 
   let toast = $state({ visible: false, message: '', type: '' });
   let toastTimer = null;
@@ -353,7 +354,13 @@
                 <span>{activeAction === 'restart' ? 'Restart' : 'Restart'}</span>
               </button>
               <button
-                onclick={() => handleAction('down')}
+                onclick={() => {
+                  if (currentStack?.name?.toLowerCase() === 'composebox') {
+                    stopModalOpen = true;
+                  } else {
+                    handleAction('down');
+                  }
+                }}
                 disabled={activeAction !== null}
                 title="Stop Stack"
                 class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
@@ -511,6 +518,11 @@
     <p class="text-xs text-zinc-400 mb-4">
       Are you sure you want to permanently delete stack '{currentStack?.name}' from disk?
     </p>
+    {#if currentStack?.name?.toLowerCase() === 'composebox'}
+      <div class="rounded-md bg-red-500/10 border border-red-500/20 p-2.5 text-[11px] text-red-300 mb-4 leading-relaxed">
+        ⚠️ <strong>Extreme Warning:</strong> This is the Composebox application stack. Deleting it will permanently erase its files and take down this management interface.
+      </div>
+    {/if}
     <div class="flex justify-end gap-2">
       <button
         type="button"
@@ -526,6 +538,48 @@
       >
         Delete
       </button>
+    </div>
+  </Modal>
+
+  <!-- Stop Warning Modal for Self-Hosted Stack -->
+  <Modal open={stopModalOpen} onClose={() => (stopModalOpen = false)}>
+    <div class="flex items-start gap-3">
+      <div class="rounded-full bg-red-500/10 p-2 text-red-400 shrink-0">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+      </div>
+      <div>
+        <h3 class="text-sm font-semibold text-white mb-1">Stop Composebox?</h3>
+        <p class="text-xs text-zinc-300 leading-relaxed mb-3">
+          Stopping this stack will terminate the <strong>Composebox manager itself</strong>.
+        </p>
+        <div class="rounded-md bg-zinc-950 border border-zinc-800 p-2.5 text-[11px] text-zinc-400 font-mono mb-4 leading-relaxed">
+          ⚠️ The web UI will disconnect immediately. You will need SSH / host terminal access to restart it:
+          <span class="text-zinc-200 block mt-1">cd {currentStack?.path || '/home/ubuntu/services/composebox'} && docker compose up -d</span>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            onclick={() => (stopModalOpen = false)}
+            class="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 active:scale-95 transition-all duration-150"
+          >
+            Cancel (Keep Running)
+          </button>
+          <button
+            type="button"
+            onclick={() => {
+              stopModalOpen = false;
+              handleAction('down');
+            }}
+            class="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-95 transition-all duration-150"
+          >
+            I Understand, Stop Stack
+          </button>
+        </div>
+      </div>
     </div>
   </Modal>
 
