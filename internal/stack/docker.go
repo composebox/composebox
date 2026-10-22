@@ -192,6 +192,32 @@ func (c *DockerClient) Pull(ctx context.Context, stackPath, composeFile string) 
 	return c.runCommand(ctx, stackPath, composeFile, "pull")
 }
 
+// Update runs docker compose pull followed by docker compose up -d with per-stack serialization.
+func (c *DockerClient) Update(ctx context.Context, stackPath, composeFile string) (string, error) {
+	lock := c.getStackLock(stackPath)
+	lock.Lock()
+	defer lock.Unlock()
+
+	pullOut, err := c.runCommand(ctx, stackPath, composeFile, "pull")
+	if err != nil {
+		return pullOut, fmt.Errorf("pull failed: %w", err)
+	}
+
+	upOut, err := c.runCommand(ctx, stackPath, composeFile, "up", "-d", "--remove-orphans")
+	combined := pullOut
+	if upOut != "" {
+		if combined != "" {
+			combined += "\n"
+		}
+		combined += upOut
+	}
+	if err != nil {
+		return combined, fmt.Errorf("up failed: %w", err)
+	}
+
+	return combined, nil
+}
+
 // StreamLogs executes docker compose logs -f and writes to w.
 func (c *DockerClient) StreamLogs(ctx context.Context, stackPath, composeFile string, w io.Writer) error {
 	fullComposePath := filepath.Join(stackPath, composeFile)

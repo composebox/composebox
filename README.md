@@ -157,6 +157,7 @@ All protected endpoints require an authenticated session cookie (`composebox_ses
 | `POST` | `/api/stacks/{name}/down` | Executes `docker compose down` |
 | `POST` | `/api/stacks/{name}/restart` | Executes `docker compose restart` |
 | `POST` | `/api/stacks/{name}/pull` | Executes `docker compose pull` |
+| `POST` | `/api/stacks/{name}/update` | Executes `docker compose pull` followed by `up -d --remove-orphans` |
 | `GET` | `/api/stacks/{name}/logs` | Streams live Docker logs as Server-Sent Events (`text/event-stream`) |
 
 ---

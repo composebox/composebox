@@ -45,6 +45,11 @@
       (composeContent !== originalCompose || envContent !== originalEnv)
   );
 
+  let isRunning = $derived(
+    currentStack !== null &&
+      (currentStack.status === 'running' || currentStack.status === 'partial')
+  );
+
   function showToast(message, type = '') {
     if (toastTimer) clearTimeout(toastTimer);
     toast = { visible: true, message, type };
@@ -310,43 +315,55 @@
           </div>
 
           <!-- Lifecycle & Desktop Actions -->
-          <div class="grid grid-cols-4 sm:flex sm:items-center gap-1.5">
-            <button
-              onclick={() => handleAction('up')}
-              disabled={activeAction !== null}
-              title="Start Stack"
-              class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
-            >
-              <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'up' ? 'animate-pulse text-emerald-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              <span>{activeAction === 'up' ? 'Starting' : 'Start'}</span>
-            </button>
-            <button
-              onclick={() => handleAction('restart')}
-              disabled={activeAction !== null}
-              title="Restart Stack"
-              class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
-            >
-              <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'restart' ? 'animate-spin motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-              <span>{activeAction === 'restart' ? 'Restart' : 'Restart'}</span>
-            </button>
-            <button
-              onclick={() => handleAction('pull')}
-              disabled={activeAction !== null}
-              title="Pull Images"
-              class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
-            >
-              <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'pull' ? 'animate-bounce motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-              <span>{activeAction === 'pull' ? 'Pulling' : 'Pull'}</span>
-            </button>
-            <button
-              onclick={() => handleAction('down')}
-              disabled={activeAction !== null}
-              title="Stop Stack"
-              class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
-            >
-              <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'down' ? 'animate-pulse text-red-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
-              <span>{activeAction === 'down' ? 'Stopping' : 'Stop'}</span>
-            </button>
+          <div class="grid {isRunning ? 'grid-cols-3' : 'grid-cols-2'} sm:flex sm:items-center gap-1.5">
+            {#if isRunning}
+              <button
+                onclick={() => handleAction('update')}
+                disabled={activeAction !== null}
+                title="Update Stack (Pull latest images & apply changes)"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+              >
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'update' ? 'animate-spin' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                <span>{activeAction === 'update' ? 'Updating' : 'Update'}</span>
+              </button>
+              <button
+                onclick={() => handleAction('restart')}
+                disabled={activeAction !== null}
+                title="Restart Stack"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+              >
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'restart' ? 'animate-spin motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                <span>{activeAction === 'restart' ? 'Restart' : 'Restart'}</span>
+              </button>
+              <button
+                onclick={() => handleAction('down')}
+                disabled={activeAction !== null}
+                title="Stop Stack"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+              >
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'down' ? 'animate-pulse text-red-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
+                <span>{activeAction === 'down' ? 'Stopping' : 'Stop'}</span>
+              </button>
+            {:else}
+              <button
+                onclick={() => handleAction('up')}
+                disabled={activeAction !== null}
+                title="Start Stack"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+              >
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'up' ? 'animate-pulse text-emerald-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>{activeAction === 'up' ? 'Starting' : 'Start'}</span>
+              </button>
+              <button
+                onclick={() => handleAction('pull')}
+                disabled={activeAction !== null}
+                title="Pull Images"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+              >
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'pull' ? 'animate-bounce motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                <span>{activeAction === 'pull' ? 'Pulling' : 'Pull'}</span>
+              </button>
+            {/if}
             <button
               onclick={handleSave}
               disabled={activeAction !== null}

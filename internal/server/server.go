@@ -66,6 +66,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/stacks/{name}/down", s.authManager.Middleware(s.handleStackAction("down")))
 	s.mux.Handle("POST /api/stacks/{name}/restart", s.authManager.Middleware(s.handleStackAction("restart")))
 	s.mux.Handle("POST /api/stacks/{name}/pull", s.authManager.Middleware(s.handleStackAction("pull")))
+	s.mux.Handle("POST /api/stacks/{name}/update", s.authManager.Middleware(s.handleStackAction("update")))
 	s.mux.Handle("GET /api/stacks/{name}/logs", s.authManager.Middleware(http.HandlerFunc(s.handleStreamLogs)))
 
 	// Co-located embedded Svelte SPA
@@ -293,6 +294,8 @@ func (s *Server) handleStackAction(action string) http.HandlerFunc {
 			output, actionErr = s.dockerClient.Restart(ctx, details.Path, details.ComposeFile)
 		case "pull":
 			output, actionErr = s.dockerClient.Pull(ctx, details.Path, details.ComposeFile)
+		case "update":
+			output, actionErr = s.dockerClient.Update(ctx, details.Path, details.ComposeFile)
 		default:
 			respondError(w, http.StatusBadRequest, "unknown action")
 			return
