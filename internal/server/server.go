@@ -156,7 +156,9 @@ func (s *Server) handleListStacks(w http.ResponseWriter, r *http.Request) {
 			if err == nil {
 				stacks[idx].Containers = containers
 				stacks[idx].Status = status
-				stacks[idx].TotalServices = len(containers)
+				if len(containers) > stacks[idx].TotalServices {
+					stacks[idx].TotalServices = len(containers)
+				}
 				stacks[idx].RunningCount = runningCount
 			} else {
 				stacks[idx].Status = stack.StatusUnknown
@@ -183,7 +185,9 @@ func (s *Server) handleGetStack(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		details.Containers = containers
 		details.Status = status
-		details.TotalServices = len(containers)
+		if len(containers) > details.TotalServices {
+			details.TotalServices = len(containers)
+		}
 		details.RunningCount = runningCount
 	}
 
@@ -279,43 +283,93 @@ func (s *Server) handleStackAction(action string) http.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 		defer cancel()
 
-		var output string
-		var actionErr error
+		if r.Header.Get("Accept") == "application/json" {
+			var output string
+			var actionErr error
+			switch action {
+			case "up":
+				output, actionErr = s.dockerClient.Up(ctx, details.Path, details.ComposeFile)
+			case "down":
+				output, actionErr = s.dockerClient.Down(ctx, details.Path, details.ComposeFile)
+			case "restart":
+				output, actionErr = s.dockerClient.Restart(ctx, details.Path, details.ComposeFile)
+			case "pull":
+				output, actionErr = s.dockerClient.Pull(ctx, details.Path, details.ComposeFile)
+			case "update":
+				output, actionErr = s.dockerClient.Update(ctx, details.Path, details.ComposeFile)
+			default:
+				respondError(w, http.StatusBadRequest, "unknown action")
+				return
+			}
 
-		switch action {
-		case "up":
-			output, actionErr = s.dockerClient.Up(ctx, details.Path, details.ComposeFile)
-		case "down":
-			output, actionErr = s.dockerClient.Down(ctx, details.Path, details.ComposeFile)
-		case "restart":
-			output, actionErr = s.dockerClient.Restart(ctx, details.Path, details.ComposeFile)
-		case "pull":
-			output, actionErr = s.dockerClient.Pull(ctx, details.Path, details.ComposeFile)
-		case "update":
-			output, actionErr = s.dockerClient.Update(ctx, details.Path, details.ComposeFile)
-		default:
-			respondError(w, http.StatusBadRequest, "unknown action")
-			return
-		}
+			if actionErr != nil {
+				respondJSON(w, http.StatusInternalServerError, stack.ActionResponse{
+					Success: false,
+					Message: actionErr.Error(),
+					Output:  output,
+				})
+				return
+			}
 
-		if actionErr != nil {
-			respondJSON(w, http.StatusInternalServerError, stack.ActionResponse{
-				Success: false,
-				Message: actionErr.Error(),
+			respondJSON(w, http.StatusOK, stack.ActionResponse{
+				Success: true,
+				Message: fmt.Sprintf("Stack '%s' action '%s' completed successfully", name, action),
 				Output:  output,
 			})
 			return
 		}
 
-		respondJSON(w, http.StatusOK, stack.ActionResponse{
-			Success: true,
-			Message: fmt.Sprintf("Stack '%s' action '%s' completed successfully", name, action),
-			Output:  output,
-		})
+		flusher, _ := w.(http.Flusher)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.WriteHeader(http.StatusOK)
+		if flusher != nil {
+			flusher.Flush()
+		}
+
+		fw := &flushWriter{w: w, flusher: flusher}
+		fmt.Fprintf(fw, "$ docker compose %s\n\n", action)
+
+		var actionErr error
+		switch action {
+		case "up":
+			actionErr = s.dockerClient.UpStream(ctx, details.Path, details.ComposeFile, fw)
+		case "down":
+			actionErr = s.dockerClient.DownStream(ctx, details.Path, details.ComposeFile, fw)
+		case "restart":
+			actionErr = s.dockerClient.RestartStream(ctx, details.Path, details.ComposeFile, fw)
+		case "pull":
+			actionErr = s.dockerClient.PullStream(ctx, details.Path, details.ComposeFile, fw)
+		case "update":
+			actionErr = s.dockerClient.UpdateStream(ctx, details.Path, details.ComposeFile, fw)
+		default:
+			fmt.Fprintf(fw, "Error: unknown action '%s'\n", action)
+			return
+		}
+
+		if actionErr != nil {
+			fmt.Fprintf(fw, "\n[ERROR] %v\n", actionErr)
+		} else {
+			fmt.Fprintf(fw, "\n[SUCCESS] Stack '%s' action '%s' completed successfully.\n", name, action)
+		}
 	}
+}
+
+type flushWriter struct {
+	w       io.Writer
+	flusher http.Flusher
+}
+
+func (fw *flushWriter) Write(p []byte) (n int, err error) {
+	n, err = fw.w.Write(p)
+	if fw.flusher != nil {
+		fw.flusher.Flush()
+	}
+	return n, err
 }
 
 func (s *Server) handleStreamLogs(w http.ResponseWriter, r *http.Request) {

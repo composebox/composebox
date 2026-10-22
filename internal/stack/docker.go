@@ -158,64 +158,92 @@ func parseContainersJSON(rawOutput string) ([]Container, Status, int) {
 
 // Up runs docker compose up -d with per-stack serialization.
 func (c *DockerClient) Up(ctx context.Context, stackPath, composeFile string) (string, error) {
+	var buf bytes.Buffer
+	err := c.UpStream(ctx, stackPath, composeFile, &buf)
+	return strings.TrimSpace(buf.String()), err
+}
+
+// UpStream executes docker compose up -d and streams output directly to out.
+func (c *DockerClient) UpStream(ctx context.Context, stackPath, composeFile string, out io.Writer) error {
 	lock := c.getStackLock(stackPath)
 	lock.Lock()
 	defer lock.Unlock()
 
-	return c.runCommand(ctx, stackPath, composeFile, "up", "-d", "--remove-orphans")
+	return c.runCommandStream(ctx, stackPath, composeFile, out, "up", "-d", "--remove-orphans")
 }
 
 // Down runs docker compose down with per-stack serialization.
 func (c *DockerClient) Down(ctx context.Context, stackPath, composeFile string) (string, error) {
+	var buf bytes.Buffer
+	err := c.DownStream(ctx, stackPath, composeFile, &buf)
+	return strings.TrimSpace(buf.String()), err
+}
+
+// DownStream executes docker compose down and streams output directly to out.
+func (c *DockerClient) DownStream(ctx context.Context, stackPath, composeFile string, out io.Writer) error {
 	lock := c.getStackLock(stackPath)
 	lock.Lock()
 	defer lock.Unlock()
 
-	return c.runCommand(ctx, stackPath, composeFile, "down")
+	return c.runCommandStream(ctx, stackPath, composeFile, out, "down")
 }
 
 // Restart runs docker compose restart with per-stack serialization.
 func (c *DockerClient) Restart(ctx context.Context, stackPath, composeFile string) (string, error) {
+	var buf bytes.Buffer
+	err := c.RestartStream(ctx, stackPath, composeFile, &buf)
+	return strings.TrimSpace(buf.String()), err
+}
+
+// RestartStream executes docker compose restart and streams output directly to out.
+func (c *DockerClient) RestartStream(ctx context.Context, stackPath, composeFile string, out io.Writer) error {
 	lock := c.getStackLock(stackPath)
 	lock.Lock()
 	defer lock.Unlock()
 
-	return c.runCommand(ctx, stackPath, composeFile, "restart")
+	return c.runCommandStream(ctx, stackPath, composeFile, out, "restart")
 }
 
 // Pull runs docker compose pull with per-stack serialization.
 func (c *DockerClient) Pull(ctx context.Context, stackPath, composeFile string) (string, error) {
+	var buf bytes.Buffer
+	err := c.PullStream(ctx, stackPath, composeFile, &buf)
+	return strings.TrimSpace(buf.String()), err
+}
+
+// PullStream executes docker compose pull and streams output directly to out.
+func (c *DockerClient) PullStream(ctx context.Context, stackPath, composeFile string, out io.Writer) error {
 	lock := c.getStackLock(stackPath)
 	lock.Lock()
 	defer lock.Unlock()
 
-	return c.runCommand(ctx, stackPath, composeFile, "pull")
+	return c.runCommandStream(ctx, stackPath, composeFile, out, "pull")
 }
 
 // Update runs docker compose pull followed by docker compose up -d with per-stack serialization.
 func (c *DockerClient) Update(ctx context.Context, stackPath, composeFile string) (string, error) {
+	var buf bytes.Buffer
+	err := c.UpdateStream(ctx, stackPath, composeFile, &buf)
+	return strings.TrimSpace(buf.String()), err
+}
+
+// UpdateStream runs docker compose pull followed by docker compose up -d streaming output.
+func (c *DockerClient) UpdateStream(ctx context.Context, stackPath, composeFile string, out io.Writer) error {
 	lock := c.getStackLock(stackPath)
 	lock.Lock()
 	defer lock.Unlock()
 
-	pullOut, err := c.runCommand(ctx, stackPath, composeFile, "pull")
-	if err != nil {
-		return pullOut, fmt.Errorf("pull failed: %w", err)
+	fmt.Fprintf(out, "--> Pulling latest images from registry...\n")
+	if err := c.runCommandStream(ctx, stackPath, composeFile, out, "pull"); err != nil {
+		return fmt.Errorf("pull failed: %w", err)
 	}
 
-	upOut, err := c.runCommand(ctx, stackPath, composeFile, "up", "-d", "--remove-orphans")
-	combined := pullOut
-	if upOut != "" {
-		if combined != "" {
-			combined += "\n"
-		}
-		combined += upOut
-	}
-	if err != nil {
-		return combined, fmt.Errorf("up failed: %w", err)
+	fmt.Fprintf(out, "\n--> Recreating and applying container changes...\n")
+	if err := c.runCommandStream(ctx, stackPath, composeFile, out, "up", "-d", "--remove-orphans"); err != nil {
+		return fmt.Errorf("up failed: %w", err)
 	}
 
-	return combined, nil
+	return nil
 }
 
 // StreamLogs executes docker compose logs -f and writes to w.
@@ -232,6 +260,12 @@ func (c *DockerClient) StreamLogs(ctx context.Context, stackPath, composeFile st
 }
 
 func (c *DockerClient) runCommand(ctx context.Context, stackPath, composeFile string, args ...string) (string, error) {
+	var out bytes.Buffer
+	err := c.runCommandStream(ctx, stackPath, composeFile, &out, args...)
+	return strings.TrimSpace(out.String()), err
+}
+
+func (c *DockerClient) runCommandStream(ctx context.Context, stackPath, composeFile string, out io.Writer, args ...string) error {
 	fullComposePath := filepath.Join(stackPath, composeFile)
 	baseArgs := []string{"compose", "-f", fullComposePath}
 	fullArgs := append(baseArgs, args...)
@@ -240,15 +274,12 @@ func (c *DockerClient) runCommand(ctx context.Context, stackPath, composeFile st
 	cmd.Dir = stackPath
 	cmd.WaitDelay = 3 * time.Second
 
-	var combined bytes.Buffer
-	cmd.Stdout = &combined
-	cmd.Stderr = &combined
+	cmd.Stdout = out
+	cmd.Stderr = out
 
 	err := cmd.Run()
-	output := strings.TrimSpace(CleanLogLine(combined.String()))
 	if err != nil {
-		return output, fmt.Errorf("command 'docker %s' failed: %w (%s)", strings.Join(fullArgs, " "), err, output)
+		return fmt.Errorf("command 'docker %s' failed: %w", strings.Join(fullArgs, " "), err)
 	}
-
-	return output, nil
+	return nil
 }

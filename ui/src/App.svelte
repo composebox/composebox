@@ -17,6 +17,7 @@
   import ContainersTable from './lib/ContainersTable.svelte';
   import Editor from './lib/Editor.svelte';
   import Terminal from './lib/Terminal.svelte';
+  import ActionConsole from './lib/ActionConsole.svelte';
   import Modal from './lib/Modal.svelte';
 
   let authState = $state('loading'); // 'loading' | 'setup' | 'login' | 'app'
@@ -27,6 +28,11 @@
   let tab = $state('containers'); // 'containers' | 'compose' | 'env' | 'logs'
   let activeAction = $state(null);
   let mobileDrawerOpen = $state(true);
+
+  let consoleOpen = $state(false);
+  let consoleAction = $state('');
+  let consoleLogs = $state('');
+  let consoleStatus = $state('running'); // 'running' | 'success' | 'error'
 
   let composeContent = $state('');
   let envContent = $state('');
@@ -130,12 +136,23 @@
   async function handleAction(action) {
     if (!currentStack || activeAction) return;
     activeAction = action;
-    showToast(`Running ${action}...`);
+    consoleAction = action;
+    consoleLogs = `[composebox] Starting action '${action}' for stack '${currentStack.name}'...\n`;
+    consoleStatus = 'running';
+    consoleOpen = true;
+
     try {
-      const res = await triggerAction(currentStack.name, action);
-      showToast(res.message, 'success');
+      await triggerAction(currentStack.name, action, (chunk) => {
+        consoleLogs += chunk;
+      });
+      consoleStatus = 'success';
+      showToast(`Action '${action}' completed successfully`, 'success');
       await loadStacks();
+      // Reload current stack details to refresh containers and status
+      await selectStack(currentStack.name, false);
     } catch (err) {
+      consoleStatus = 'error';
+      consoleLogs += `\n[composebox:error] ${err.message}\n`;
       showToast(err.message, 'error');
     } finally {
       activeAction = null;
@@ -388,30 +405,44 @@
         </div>
 
         <!-- Navigation tabs -->
-        <nav class="flex border-b border-zinc-800/80 bg-zinc-900/20 px-3.5 sm:px-5 gap-5 sm:gap-6 shrink-0 overflow-x-auto">
+        <nav class="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900/20 px-3.5 sm:px-5 shrink-0 overflow-x-auto">
+          <div class="flex gap-5 sm:gap-6">
+            <button
+              onclick={() => (tab = 'containers')}
+              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'containers' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+            >
+              Containers
+            </button>
+            <button
+              onclick={() => (tab = 'compose')}
+              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'compose' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+            >
+              compose.yaml
+            </button>
+            <button
+              onclick={() => (tab = 'env')}
+              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'env' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+            >
+              .env
+            </button>
+            <button
+              onclick={() => (tab = 'logs')}
+              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'logs' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+            >
+              Logs
+            </button>
+          </div>
+
           <button
-            onclick={() => (tab = 'containers')}
-            class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'containers' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+            onclick={() => (consoleOpen = !consoleOpen)}
+            class="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors duration-150 {consoleOpen ? 'bg-zinc-800 text-white border border-zinc-700' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}"
+            title="Toggle Action Console Drawer"
           >
-            Containers
-          </button>
-          <button
-            onclick={() => (tab = 'compose')}
-            class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'compose' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
-          >
-            compose.yaml
-          </button>
-          <button
-            onclick={() => (tab = 'env')}
-            class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'env' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
-          >
-            .env
-          </button>
-          <button
-            onclick={() => (tab = 'logs')}
-            class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'logs' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
-          >
-            Logs
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <span>Console</span>
+            {#if consoleLogs && !consoleOpen}
+              <span class="h-1.5 w-1.5 rounded-full {consoleStatus === 'running' ? 'bg-amber-400 animate-pulse' : consoleStatus === 'error' ? 'bg-red-400' : 'bg-emerald-400'}"></span>
+            {/if}
           </button>
         </nav>
 
@@ -429,6 +460,16 @@
             {/if}
           </div>
         {/key}
+
+        <!-- Action Console Drawer -->
+        <ActionConsole
+          open={consoleOpen}
+          action={consoleAction}
+          logs={consoleLogs}
+          status={consoleStatus}
+          onClose={() => (consoleOpen = false)}
+          onClear={() => (consoleLogs = '')}
+        />
       {/if}
     </main>
   </div>

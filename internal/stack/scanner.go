@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -58,13 +60,15 @@ func (s *Scanner) Discover() ([]Stack, error) {
 		}
 
 		hasEnv := fileExists(filepath.Join(stackPath, ".env"))
+		declaredCount := CountServices(filepath.Join(stackPath, composeFile))
 
 		stacks = append(stacks, Stack{
-			Name:        name,
-			Path:        stackPath,
-			ComposeFile: composeFile,
-			HasEnv:      hasEnv,
-			Status:      StatusUnknown,
+			Name:          name,
+			Path:          stackPath,
+			ComposeFile:   composeFile,
+			HasEnv:        hasEnv,
+			Status:        StatusUnknown,
+			TotalServices: declaredCount,
 		})
 	}
 
@@ -94,17 +98,35 @@ func (s *Scanner) GetStack(name string) (*Details, error) {
 		envContent, _ = os.ReadFile(envPath)
 	}
 
+	declaredCount := CountServices(filepath.Join(stackPath, composeFileName))
+
 	return &Details{
 		Stack: Stack{
-			Name:        name,
-			Path:        stackPath,
-			ComposeFile: composeFileName,
-			HasEnv:      fileExists(envPath),
-			Status:      StatusUnknown,
+			Name:          name,
+			Path:          stackPath,
+			ComposeFile:   composeFileName,
+			HasEnv:        fileExists(envPath),
+			Status:        StatusUnknown,
+			TotalServices: declaredCount,
 		},
 		ComposeContent: string(composeContent),
 		EnvContent:     string(envContent),
 	}, nil
+}
+
+// CountServices parses a compose file and returns the number of declared services.
+func CountServices(composeFilePath string) int {
+	data, err := os.ReadFile(composeFilePath)
+	if err != nil {
+		return 0
+	}
+	var cfg struct {
+		Services map[string]any `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return 0
+	}
+	return len(cfg.Services)
 }
 
 // SaveFiles writes updated compose and .env contents to disk atomically.

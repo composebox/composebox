@@ -89,13 +89,32 @@ export async function deleteStack(name) {
   return data;
 }
 
-export async function triggerAction(name, action) {
+export async function triggerAction(name, action, onChunk) {
   const res = await fetch(`/api/stacks/${encodeURIComponent(name)}/${encodeURIComponent(action)}`, {
     method: 'POST',
   });
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || data.message || `${action} failed`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(errText || `${action} failed`);
   }
-  return data;
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullOutput = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    fullOutput += chunk;
+    if (onChunk) {
+      onChunk(chunk, fullOutput);
+    }
+  }
+
+  if (fullOutput.includes('[ERROR]')) {
+    throw new Error(`Action '${action}' finished with error`);
+  }
+
+  return { success: true, output: fullOutput };
 }

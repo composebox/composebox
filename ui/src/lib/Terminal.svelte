@@ -6,7 +6,7 @@
   const MAX_LOG_CHARS = 200000;
   let logs = $state('');
   let logSource = null;
-  let termEl = null;
+  let termEl = $state(null);
 
   function connect(targetStack) {
     if (logSource) {
@@ -29,7 +29,9 @@
     };
 
     logSource.onerror = () => {
-      logs += '\n[Disconnected]\n';
+      if (!logs.includes('Disconnected')) {
+        logs += '\n[Disconnected: No running containers producing logs. Start stack to stream logs.]\n';
+      }
       logSource.close();
     };
   }
