@@ -282,16 +282,17 @@
             aria-label="Open stacks menu"
             class="-ml-1 rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white active:scale-95 transition-all duration-150"
           >
-            <svg class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+            <svg class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="18" x2="20" y2="18"/>
             </svg>
           </button>
           <span class="ml-2 text-xs font-medium text-zinc-300">Stacks</span>
         </div>
         <div class="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-2 p-4 text-center">
-          <svg class="h-8 w-8 text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <svg class="h-8 w-8 text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
-            <path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
+            <path d="m3.3 7 8.7 5 8.7-5"/>
+            <path d="M12 22V12"/>
           </svg>
           <p class="text-xs">Select a stack to view containers and edit files</p>
         </div>
@@ -306,8 +307,8 @@
                 aria-label="Open stacks menu"
                 class="md:hidden -ml-1 rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white active:scale-95 transition-all duration-150 shrink-0"
               >
-                <svg class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                <svg class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="18" x2="20" y2="18"/>
                 </svg>
               </button>
               <h2 class="text-sm font-semibold text-white truncate">{currentStack.name}</h2>
@@ -331,7 +332,7 @@
                 title="Save Changes"
                 class="relative flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-500 active:scale-95 disabled:opacity-50 transition-all duration-150"
               >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                 <span>{activeAction === 'save' ? '...' : 'Save'}</span>
                 {#if hasUnsavedChanges}
                   <span class="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-400"></span>
@@ -343,7 +344,7 @@
                 title="Delete Stack"
                 class="rounded-md border border-zinc-700/80 bg-zinc-800/60 p-1.5 text-red-400 hover:bg-red-500/10 hover:border-red-500/30 active:scale-95 disabled:opacity-50 transition-all duration-150"
               >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
             </div>
           </div>
@@ -357,7 +358,7 @@
                 title="Update Stack (Pull latest images & apply changes)"
                 class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'update' ? 'animate-spin' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'update' ? 'animate-spin' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
                 <span>{activeAction === 'update' ? 'Updating' : 'Update'}</span>
               </button>
               <button
@@ -366,7 +367,7 @@
                 title="Restart Stack"
                 class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'restart' ? 'animate-spin motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'restart' ? 'animate-spin motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
                 <span>{activeAction === 'restart' ? 'Restart' : 'Restart'}</span>
               </button>
               <button
@@ -381,7 +382,7 @@
                 title="Stop Stack"
                 class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'down' ? 'animate-pulse text-red-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'down' ? 'animate-pulse text-red-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
                 <span>{activeAction === 'down' ? 'Stopping' : 'Stop'}</span>
               </button>
             {:else}
@@ -391,7 +392,7 @@
                 title="Start Stack"
                 class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'up' ? 'animate-pulse text-emerald-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'up' ? 'animate-pulse text-emerald-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
                 <span>{activeAction === 'up' ? 'Starting' : 'Start'}</span>
               </button>
               <button
@@ -400,7 +401,7 @@
                 title="Pull Images"
                 class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'pull' ? 'animate-bounce motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'pull' ? 'animate-bounce motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                 <span>{activeAction === 'pull' ? 'Pulling' : 'Pull'}</span>
               </button>
             {/if}
@@ -410,7 +411,7 @@
               title="Save Changes (Ctrl+S)"
               class="hidden sm:flex relative items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
             >
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               <span>{activeAction === 'save' ? 'Saving...' : 'Save'}</span>
               {#if hasUnsavedChanges}
                 <span class="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-400"></span>
@@ -422,7 +423,7 @@
               title="Delete Stack"
               class="hidden sm:inline-flex rounded-md border border-zinc-700/80 bg-zinc-800/60 p-1.5 text-red-400 hover:bg-red-500/10 hover:border-red-500/30 active:scale-95 disabled:opacity-50 transition-all duration-150"
             >
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
         </div>
@@ -461,7 +462,7 @@
             class="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors duration-150 {consoleOpen ? 'bg-zinc-800 text-white border border-zinc-700' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}"
             title="Toggle Action Console Drawer"
           >
-            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
             <span>Console</span>
             {#if consoleLogs && !consoleOpen}
               <span class="h-1.5 w-1.5 rounded-full {consoleStatus === 'running' ? 'bg-amber-400 animate-pulse' : consoleStatus === 'error' ? 'bg-red-400' : 'bg-emerald-400'}"></span>
@@ -584,7 +585,7 @@
       <div class="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3 space-y-2">
         <div class="flex items-center justify-between text-[11px] text-zinc-400">
           <span class="font-medium flex items-center gap-1.5">
-            <svg class="h-3 w-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <svg class="h-3 w-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
             Host Recovery Command
           </span>
           <button
@@ -620,7 +621,7 @@
           }}
           class="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-600/90 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-red-600 active:scale-95 shadow-sm transition-all duration-150"
         >
-          <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
+          <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
           <span>Stop Anyway</span>
         </button>
       </div>
