@@ -562,12 +562,15 @@
     <div class="space-y-4">
       <!-- Header -->
       <div class="flex items-start gap-3.5">
-        <div class="rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5 text-amber-400 shrink-0 shadow-inner">
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-            <line x1="12" y1="9" x2="12" y2="13" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
+        <div class="relative rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-zinc-100 shrink-0 shadow-inner">
+          <svg class="h-6 w-6 text-zinc-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+            <path d="m3.3 7 8.7 5 8.7-5"/>
+            <path d="M12 22V12"/>
           </svg>
+          <span class="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-zinc-950 font-black text-[10px] shadow-sm">
+            !
+          </span>
         </div>
         <div class="flex-1 min-w-0">
           <h3 class="text-sm font-semibold text-white">Stop Composebox Manager?</h3>
@@ -615,9 +618,10 @@
             stopModalOpen = false;
             handleAction('down');
           }}
-          class="rounded-lg border border-red-500/40 bg-red-600/90 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-red-600 active:scale-95 shadow-sm transition-all duration-150"
+          class="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-600/90 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-red-600 active:scale-95 shadow-sm transition-all duration-150"
         >
-          Stop Anyway
+          <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
+          <span>Stop Anyway</span>
         </button>
       </div>
     </div>
