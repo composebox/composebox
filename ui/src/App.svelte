@@ -22,7 +22,7 @@
 
   let authState = $state('loading'); // 'loading' | 'setup' | 'login' | 'app'
   let authEnabled = $state(true);
-  let version = $state('v0.1.0');
+  let version = $state('');
   let stacks = $state([]);
   let currentStack = $state(null);
   let tab = $state('containers'); // 'containers' | 'compose' | 'env' | 'logs'

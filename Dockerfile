@@ -20,7 +20,7 @@ COPY --from=ui-builder /app/dist ./ui/dist
 
 ARG TARGETOS=linux
 ARG TARGETARCH
-ARG VERSION=v0.1.0
+ARG VERSION=dev
 ARG COMMIT=unknown
 ARG DATE=unknown
 

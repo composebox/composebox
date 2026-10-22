@@ -4,7 +4,7 @@
   let {
     stacks = [],
     currentStack = null,
-    version = 'v0.1.0',
+    version = '',
     authEnabled = true,
     mobileOpen = false,
     onSelectStack,

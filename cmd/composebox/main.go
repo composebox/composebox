@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -18,13 +19,34 @@ import (
 )
 
 var (
-	// Version is the current release version of composebox.
-	Version = "v0.1.0"
+	// Version is injected at build time via -ldflags.
+	Version = "dev"
 	// GitCommit is injected at build time via -ldflags.
 	GitCommit = "none"
 	// BuildDate is injected at build time via -ldflags.
 	BuildDate = "unknown"
 )
+
+func init() {
+	if Version == "dev" {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			if info.Main.Version != "" && info.Main.Version != "(devel)" {
+				Version = info.Main.Version
+			}
+			for _, setting := range info.Settings {
+				if setting.Key == "vcs.revision" && GitCommit == "none" {
+					GitCommit = setting.Value
+					if len(GitCommit) > 7 {
+						GitCommit = GitCommit[:7]
+					}
+				}
+				if setting.Key == "vcs.time" && BuildDate == "unknown" {
+					BuildDate = setting.Value
+				}
+			}
+		}
+	}
+}
 
 func main() {
 	cfg := config.Load()

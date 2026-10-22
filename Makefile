@@ -1,6 +1,6 @@
 .PHONY: all build ui test clean run docker
 
-VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo "v0.1.0")
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS = -s -w -X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.BuildDate=$(DATE)

@@ -31,7 +31,7 @@ type Server struct {
 // New creates a new HTTP server.
 func New(s *stack.Scanner, d *stack.DockerClient, a *auth.Manager, version string) *Server {
 	if version == "" {
-		version = "v0.1.0"
+		version = "dev"
 	}
 	srv := &Server{
 		scanner:      s,
