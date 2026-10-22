@@ -10,6 +10,10 @@ A lightweight web UI and manager for Docker Compose stacks, distributed as a sin
 
 `composebox` points to a directory of Docker Compose projects on your filesystem, discovers each stack automatically, and provides a responsive dark-mode web interface to edit compose definitions and environment variables, control container lifecycles, and stream real-time logs.
 
+<p align="center">
+  <img src=".github/assets/dashboard.png" alt="Composebox Dashboard Screenshot" width="100%" />
+</p>
+
 ---
 
 ## Highlights
