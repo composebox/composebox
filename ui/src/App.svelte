@@ -160,6 +160,12 @@
     }
   }
 
+  function handleClearConsole() {
+    consoleLogs = '';
+    consoleStatus = 'idle';
+    consoleAction = '';
+  }
+
   async function handleSave() {
     if (!currentStack || activeAction) return;
     activeAction = 'save';
@@ -475,7 +481,7 @@
           logs={consoleLogs}
           status={consoleStatus}
           onClose={() => (consoleOpen = false)}
-          onClear={() => (consoleLogs = '')}
+          onClear={handleClearConsole}
         />
       {/if}
     </main>

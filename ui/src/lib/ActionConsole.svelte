@@ -78,7 +78,7 @@
       </div>
 
       <div class="flex items-center gap-1">
-        {#if !minimized}
+        {#if !minimized && (logs || status !== 'idle')}
           <button
             onclick={onClear}
             class="px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
