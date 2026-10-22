@@ -43,6 +43,16 @@
   let newStackName = $state('');
   let deleteModalOpen = $state(false);
   let stopModalOpen = $state(false);
+  let copiedRecovery = $state(false);
+
+  function copyRecoveryCommand() {
+    const cmd = `cd ${currentStack?.path || '/home/ubuntu/services/composebox'} && docker compose up -d`;
+    navigator.clipboard?.writeText(cmd);
+    copiedRecovery = true;
+    setTimeout(() => {
+      copiedRecovery = false;
+    }, 2000);
+  }
 
   let toast = $state({ visible: false, message: '', type: '' });
   let toastTimer = null;
@@ -548,43 +558,67 @@
   </Modal>
 
   <!-- Stop Warning Modal for Self-Hosted Stack -->
-  <Modal open={stopModalOpen} onClose={() => (stopModalOpen = false)}>
-    <div class="flex items-start gap-3">
-      <div class="rounded-full bg-red-500/10 p-2 text-red-400 shrink-0">
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-          <line x1="12" y1="9" x2="12" y2="13" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
+  <Modal open={stopModalOpen} onClose={() => (stopModalOpen = false)} maxWidth="max-w-md">
+    <div class="space-y-4">
+      <!-- Header -->
+      <div class="flex items-start gap-3.5">
+        <div class="rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5 text-amber-400 shrink-0 shadow-inner">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h3 class="text-sm font-semibold text-white">Stop Composebox Manager?</h3>
+          <p class="text-xs text-zinc-400 mt-1 leading-relaxed">
+            This stack runs the active Composebox dashboard. Stopping it will <strong class="text-zinc-200">terminate this web interface immediately</strong>.
+          </p>
+        </div>
       </div>
-      <div>
-        <h3 class="text-sm font-semibold text-white mb-1">Stop Composebox?</h3>
-        <p class="text-xs text-zinc-300 leading-relaxed mb-3">
-          Stopping this stack will terminate the <strong>Composebox manager itself</strong>.
+
+      <!-- Recovery Notice Box -->
+      <div class="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3 space-y-2">
+        <div class="flex items-center justify-between text-[11px] text-zinc-400">
+          <span class="font-medium flex items-center gap-1.5">
+            <svg class="h-3 w-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            Host Recovery Command
+          </span>
+          <button
+            type="button"
+            onclick={copyRecoveryCommand}
+            class="text-[10px] text-zinc-400 hover:text-white px-2 py-0.5 rounded hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 transition-colors"
+          >
+            {copiedRecovery ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <div class="font-mono text-[11px] text-amber-200/90 bg-zinc-900/90 rounded px-2.5 py-1.5 border border-zinc-800 select-all break-all">
+          cd {currentStack?.path || '/home/ubuntu/services/composebox'} && docker compose up -d
+        </div>
+        <p class="text-[11px] text-zinc-500 leading-normal">
+          You will need SSH / server terminal access to run this command and bring Composebox back online.
         </p>
-        <div class="rounded-md bg-zinc-950 border border-zinc-800 p-2.5 text-[11px] text-zinc-400 font-mono mb-4 leading-relaxed">
-          ⚠️ The web UI will disconnect immediately. You will need SSH / host terminal access to restart it:
-          <span class="text-zinc-200 block mt-1">cd {currentStack?.path || '/home/ubuntu/services/composebox'} && docker compose up -d</span>
-        </div>
-        <div class="flex justify-end gap-2">
-          <button
-            type="button"
-            onclick={() => (stopModalOpen = false)}
-            class="rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 active:scale-95 transition-all duration-150"
-          >
-            Cancel (Keep Running)
-          </button>
-          <button
-            type="button"
-            onclick={() => {
-              stopModalOpen = false;
-              handleAction('down');
-            }}
-            class="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-95 transition-all duration-150"
-          >
-            I Understand, Stop Stack
-          </button>
-        </div>
+      </div>
+
+      <!-- Footer Action Buttons -->
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800/80">
+        <button
+          type="button"
+          onclick={() => (stopModalOpen = false)}
+          class="rounded-lg border border-zinc-700 bg-zinc-800/80 px-3.5 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-700 hover:text-white active:scale-95 transition-all duration-150"
+        >
+          Cancel (Keep Running)
+        </button>
+        <button
+          type="button"
+          onclick={() => {
+            stopModalOpen = false;
+            handleAction('down');
+          }}
+          class="rounded-lg border border-red-500/40 bg-red-600/90 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-red-600 active:scale-95 shadow-sm transition-all duration-150"
+        >
+          Stop Anyway
+        </button>
       </div>
     </div>
   </Modal>

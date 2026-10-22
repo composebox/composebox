@@ -2,7 +2,7 @@
   import { fade, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
 
-  let { open = false, onClose, children } = $props();
+  let { open = false, onClose, maxWidth = 'max-w-sm', children } = $props();
 
   function handleKeydown(e) {
     if (e.key === 'Escape' && open) {
@@ -25,7 +25,7 @@
   >
     <div
       transition:scale={{ duration: 160, start: 0.95, easing: cubicOut }}
-      class="w-full max-w-sm rounded-xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl"
+      class="w-full {maxWidth} rounded-xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl"
     >
       {@render children()}
     </div>
