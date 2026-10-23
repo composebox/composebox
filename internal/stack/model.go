@@ -34,11 +34,12 @@ type Stack struct {
 	Containers    []Container `json:"containers,omitempty"`
 }
 
-// Details represents full file contents and metadata for a single stack.
+// Details represents full file contents, metadata, and safety analysis for a single stack.
 type Details struct {
 	Stack
-	ComposeContent string `json:"compose_content"`
-	EnvContent     string `json:"env_content"`
+	ComposeContent   string   `json:"compose_content"`
+	EnvContent       string   `json:"env_content"`
+	SecurityWarnings []string `json:"security_warnings,omitempty"`
 }
 
 // ActionResponse represents standard output from stack actions (up, down, pull, restart).

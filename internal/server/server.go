@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -123,7 +124,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.authManager.Login(req.Password)
+	token, err := s.authManager.Login(req.Password, getClientIP(r))
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -445,13 +446,40 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")
+		w.Header().Set("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';")
 
-		// Enforce same-origin check on state-changing requests when Origin is provided
+		// Strict CSRF and Origin defense on state-changing requests
 		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
-			if origin := r.Header.Get("Origin"); origin != "" && r.Host != "" {
+			// 1. Verify Origin / Referer
+			origin := r.Header.Get("Origin")
+			referer := r.Header.Get("Referer")
+
+			if origin != "" {
 				parsed, err := url.Parse(origin)
-				if err != nil || !strings.EqualFold(parsed.Host, r.Host) {
-					respondError(w, http.StatusForbidden, "cross-origin request blocked")
+				if err != nil || !isSameHost(parsed.Host, r.Host) {
+					respondError(w, http.StatusForbidden, "cross-origin request blocked: origin mismatch")
+					return
+				}
+			} else if referer != "" {
+				parsed, err := url.Parse(referer)
+				if err != nil || !isSameHost(parsed.Host, r.Host) {
+					respondError(w, http.StatusForbidden, "cross-origin request blocked: referer mismatch")
+					return
+				}
+			} else {
+				// Both Origin and Referer are absent on a mutation request.
+				// Require an explicit custom header or bearer authorization to block blind cross-site submissions.
+				if r.Header.Get("X-Composebox-Client") != "true" && !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+					respondError(w, http.StatusForbidden, "cross-origin request blocked: missing verification headers")
+					return
+				}
+			}
+
+			// 2. Enforce custom header on all mutating API calls except public auth endpoints (which use strict SameSite cookies & body parsing)
+			if strings.HasPrefix(r.URL.Path, "/api/stacks") {
+				if r.Header.Get("X-Composebox-Client") != "true" && !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+					respondError(w, http.StatusForbidden, "request blocked: missing X-Composebox-Client header")
 					return
 				}
 			}
@@ -464,6 +492,33 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func getClientIP(r *http.Request) string {
+	if cf := r.Header.Get("CF-Connecting-IP"); cf != "" {
+		return strings.TrimSpace(cf)
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+func isSameHost(originHost, requestHost string) bool {
+	h1, _, err1 := net.SplitHostPort(originHost)
+	if err1 != nil {
+		h1 = originHost
+	}
+	h2, _, err2 := net.SplitHostPort(requestHost)
+	if err2 != nil {
+		h2 = requestHost
+	}
+	return strings.EqualFold(h1, h2)
 }
 
 func respondJSON(w http.ResponseWriter, status int, data any) {

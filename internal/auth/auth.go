@@ -33,6 +33,11 @@ type storedAuth struct {
 	PasswordHash string `json:"password_hash"`
 }
 
+type ipRateLimit struct {
+	failedAttempts int
+	lockoutUntil   time.Time
+}
+
 // Manager handles user authentication, session tokens, rate limiting, and middleware.
 type Manager struct {
 	mu             sync.Mutex
@@ -41,8 +46,7 @@ type Manager struct {
 	envPassword    string
 	noAuth         bool
 	sessionSecret  []byte
-	failedAttempts int
-	lockoutUntil   time.Time
+	ipLimits       map[string]*ipRateLimit
 }
 
 // New creates an Auth Manager and ensures the stacks directory and session secret exist.
@@ -57,6 +61,7 @@ func New(stacksDir string, envPassword string, noAuth bool) (*Manager, error) {
 		secretFilePath: filepath.Join(cleanDir, secretFileName),
 		envPassword:    envPassword,
 		noAuth:         noAuth,
+		ipLimits:       make(map[string]*ipRateLimit),
 	}
 
 	if noAuth {
@@ -130,31 +135,45 @@ func (m *Manager) Setup(password string) (string, error) {
 		return "", fmt.Errorf("failed to write auth file: %w", err)
 	}
 
-	m.failedAttempts = 0
+	// Regenerate session secret on password setup to invalidate any legacy/pre-setup tokens
+	newSecret := make([]byte, 32)
+	if _, err := rand.Read(newSecret); err == nil {
+		m.sessionSecret = newSecret
+		_ = atomicWriteFile(m.secretFilePath, []byte(hex.EncodeToString(m.sessionSecret)), 0600)
+	}
+
+	m.ipLimits = make(map[string]*ipRateLimit)
 	return m.generateToken(), nil
 }
 
-// Login verifies the password with brute-force protection and returns a new session token.
-func (m *Manager) Login(password string) (string, error) {
+// Login verifies the password with per-IP brute-force protection and returns a new session token.
+func (m *Manager) Login(password string, clientIP ...string) (string, error) {
 	if m.noAuth {
 		return "no-auth-token", nil
 	}
 
+	ip := "global"
+	if len(clientIP) > 0 && clientIP[0] != "" {
+		ip = clientIP[0]
+	}
+
 	m.mu.Lock()
-	if time.Now().Before(m.lockoutUntil) {
-		remaining := int(time.Until(m.lockoutUntil).Seconds()) + 1
-		m.mu.Unlock()
-		return "", fmt.Errorf("too many failed attempts, try again in %ds", remaining)
+	if lim, ok := m.ipLimits[ip]; ok {
+		if time.Now().Before(lim.lockoutUntil) {
+			remaining := int(time.Until(lim.lockoutUntil).Seconds()) + 1
+			m.mu.Unlock()
+			return "", fmt.Errorf("too many failed attempts from your IP, try again in %ds", remaining)
+		}
 	}
 	m.mu.Unlock()
 
 	// 1. Environment variable override
 	if m.envPassword != "" {
 		if subtle.ConstantTimeCompare([]byte(password), []byte(m.envPassword)) == 1 {
-			m.resetFailures()
+			m.resetFailures(ip)
 			return m.generateToken(), nil
 		}
-		m.recordFailure()
+		m.recordFailure(ip)
 		return "", errors.New("invalid password")
 	}
 
@@ -170,29 +189,44 @@ func (m *Manager) Login(password string) (string, error) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(sa.PasswordHash), []byte(password)); err != nil {
-		m.recordFailure()
+		m.recordFailure(ip)
 		return "", errors.New("invalid password")
 	}
 
-	m.resetFailures()
+	m.resetFailures(ip)
 	return m.generateToken(), nil
 }
 
-func (m *Manager) recordFailure() {
+func (m *Manager) recordFailure(ip string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.failedAttempts++
-	if m.failedAttempts >= maxFailedAttempts {
-		m.lockoutUntil = time.Now().Add(lockoutDuration)
-		m.failedAttempts = 0
+
+	// Prevent map from growing without bound
+	if len(m.ipLimits) > 1000 {
+		now := time.Now()
+		for k, v := range m.ipLimits {
+			if now.After(v.lockoutUntil) && v.failedAttempts == 0 {
+				delete(m.ipLimits, k)
+			}
+		}
+	}
+
+	lim, ok := m.ipLimits[ip]
+	if !ok {
+		lim = &ipRateLimit{}
+		m.ipLimits[ip] = lim
+	}
+	lim.failedAttempts++
+	if lim.failedAttempts >= maxFailedAttempts {
+		lim.lockoutUntil = time.Now().Add(lockoutDuration)
+		lim.failedAttempts = 0
 	}
 }
 
-func (m *Manager) resetFailures() {
+func (m *Manager) resetFailures(ip string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.failedAttempts = 0
-	m.lockoutUntil = time.Time{}
+	delete(m.ipLimits, ip)
 }
 
 // ValidateToken verifies a token signature and expiration in constant time.
@@ -215,7 +249,7 @@ func (m *Manager) ValidateToken(token string) bool {
 	return hmac.Equal([]byte(sigHex), []byte(expectedSig))
 }
 
-// SetCookie attaches the session cookie with dynamic Secure detection.
+// SetCookie attaches the session cookie with dynamic Secure detection and Strict SameSite mode.
 func (m *Manager) SetCookie(w http.ResponseWriter, r *http.Request, token string) {
 	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
@@ -225,7 +259,7 @@ func (m *Manager) SetCookie(w http.ResponseWriter, r *http.Request, token string
 		Expires:  time.Now().Add(tokenTTL),
 		HttpOnly: true,
 		Secure:   isSecure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 	})
 }
 
@@ -240,7 +274,7 @@ func (m *Manager) ClearCookie(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   isSecure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 	})
 }
 

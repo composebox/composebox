@@ -141,3 +141,41 @@ func TestCleanLogLine(t *testing.T) {
 		t.Errorf("CleanLogLine() = %q, want %q", got, want)
 	}
 }
+
+func TestAuditComposeSecurity(t *testing.T) {
+	// 1. Invalid YAML syntax
+	badYaml := "services:\n  app:\n  image: [unbalanced"
+	_, err := AuditComposeSecurity(badYaml)
+	if err == nil {
+		t.Errorf("expected syntax error on malformed YAML")
+	}
+
+	// 2. Safe Compose definition
+	safeYaml := "services:\n  web:\n    image: nginx:alpine\n    ports:\n      - 80:80\n"
+	warnings, err := AuditComposeSecurity(safeYaml)
+	if err != nil {
+		t.Fatalf("unexpected error on safe YAML: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("expected 0 warnings for safe compose file, got %d", len(warnings))
+	}
+
+	// 3. High-risk compose definition with dangerous mounts & privileged flags
+	riskyYaml := `services:
+  agent:
+    image: alpine
+    privileged: true
+    network_mode: host
+    pid: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc:/host-etc:ro
+`
+	warnings, err = AuditComposeSecurity(riskyYaml)
+	if err != nil {
+		t.Fatalf("unexpected error on risky YAML: %v", err)
+	}
+	if len(warnings) < 5 {
+		t.Errorf("expected at least 5 security warnings, got %d: %v", len(warnings), warnings)
+	}
+}

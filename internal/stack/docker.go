@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -70,6 +71,13 @@ func (c *DockerClient) GetContainers(ctx context.Context, stackPath, composeFile
 	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", fullComposePath, "ps", "-a", "--format", "json")
 	cmd.Dir = stackPath
 	cmd.WaitDelay = 3 * time.Second
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -252,6 +260,13 @@ func (c *DockerClient) StreamLogs(ctx context.Context, stackPath, composeFile st
 	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", fullComposePath, "logs", "-f", "--tail=100", "--no-color")
 	cmd.Dir = stackPath
 	cmd.WaitDelay = 3 * time.Second
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
 
 	cmd.Stdout = w
 	cmd.Stderr = w
@@ -273,6 +288,13 @@ func (c *DockerClient) runCommandStream(ctx context.Context, stackPath, composeF
 	cmd := exec.CommandContext(ctx, "docker", fullArgs...)
 	cmd.Dir = stackPath
 	cmd.WaitDelay = 3 * time.Second
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
 
 	cmd.Stdout = out
 	cmd.Stderr = out

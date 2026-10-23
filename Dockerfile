@@ -43,10 +43,18 @@ RUN apk add --no-cache \
     curl \
     docker-cli \
     docker-cli-compose \
-    tzdata
+    tzdata && \
+    addgroup -g 1001 composebox && \
+    adduser -u 1001 -G composebox -s /bin/sh -D composebox && \
+    addgroup -g 988 docker-host 2>/dev/null || true && \
+    addgroup composebox docker-host 2>/dev/null || true && \
+    mkdir -p /stacks && \
+    chown -R 1001:1001 /stacks
 
 WORKDIR /app
 COPY --from=backend-builder /composebox /usr/local/bin/composebox
+
+USER 1001:1001
 
 ENV PORT=8080
 ENV HOST=0.0.0.0

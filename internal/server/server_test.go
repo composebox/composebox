@@ -97,6 +97,7 @@ func TestAuthEndpoints(t *testing.T) {
 	setupPayload := []byte(`{"password":"testadminpassword"}`)
 	setupReq := httptest.NewRequest("POST", "/api/auth/setup", bytes.NewReader(setupPayload))
 	setupReq.Header.Set("Content-Type", "application/json")
+	setupReq.Header.Set("X-Composebox-Client", "true")
 	setupRec := httptest.NewRecorder()
 	handler.ServeHTTP(setupRec, setupReq)
 
@@ -130,6 +131,7 @@ func TestAuthEndpoints(t *testing.T) {
 	createPayload := []byte(`{"name":"test-api-stack","compose_content":"services:\n  app:\n    image: nginx:alpine\n","env_content":""}`)
 	createReq := httptest.NewRequest("POST", "/api/stacks", bytes.NewReader(createPayload))
 	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Composebox-Client", "true")
 	createReq.AddCookie(sessionCookie)
 	createRec := httptest.NewRecorder()
 	handler.ServeHTTP(createRec, createReq)
@@ -148,6 +150,7 @@ func TestAuthEndpoints(t *testing.T) {
 
 	// 8. Delete created stack
 	delReq := httptest.NewRequest("DELETE", "/api/stacks/test-api-stack", nil)
+	delReq.Header.Set("X-Composebox-Client", "true")
 	delReq.AddCookie(sessionCookie)
 	delRec := httptest.NewRecorder()
 	handler.ServeHTTP(delRec, delReq)
@@ -159,10 +162,21 @@ func TestAuthEndpoints(t *testing.T) {
 	csrfReq := httptest.NewRequest("POST", "/api/stacks", bytes.NewReader(createPayload))
 	csrfReq.Host = "localhost:8888"
 	csrfReq.Header.Set("Origin", "https://evil.example.com")
+	csrfReq.Header.Set("X-Composebox-Client", "true")
 	csrfReq.AddCookie(sessionCookie)
 	csrfRec := httptest.NewRecorder()
 	handler.ServeHTTP(csrfRec, csrfReq)
 	if csrfRec.Code != http.StatusForbidden {
 		t.Errorf("expected 403 Forbidden for cross-origin POST, got %d", csrfRec.Code)
+	}
+
+	// 10. Missing X-Composebox-Client header on mutation request blocks CSRF
+	noHeaderReq := httptest.NewRequest("POST", "/api/stacks", bytes.NewReader(createPayload))
+	noHeaderReq.Header.Set("Content-Type", "application/json")
+	noHeaderReq.AddCookie(sessionCookie)
+	noHeaderRec := httptest.NewRecorder()
+	handler.ServeHTTP(noHeaderRec, noHeaderReq)
+	if noHeaderRec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for missing X-Composebox-Client header, got %d", noHeaderRec.Code)
 	}
 }

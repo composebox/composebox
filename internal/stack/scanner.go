@@ -100,6 +100,7 @@ func (s *Scanner) GetStack(name string) (*Details, error) {
 	}
 
 	declaredCount := CountServices(filepath.Join(stackPath, composeFileName))
+	warnings, _ := AuditComposeSecurity(string(composeContent))
 
 	return &Details{
 		Stack: Stack{
@@ -110,9 +111,60 @@ func (s *Scanner) GetStack(name string) (*Details, error) {
 			Status:        StatusUnknown,
 			TotalServices: declaredCount,
 		},
-		ComposeContent: string(composeContent),
-		EnvContent:     string(envContent),
+		ComposeContent:   string(composeContent),
+		EnvContent:       string(envContent),
+		SecurityWarnings: warnings,
 	}, nil
+}
+
+// AuditComposeSecurity parses compose content, validates YAML syntax, and detects dangerous host access.
+func AuditComposeSecurity(composeContent string) ([]string, error) {
+	trimmed := strings.TrimSpace(composeContent)
+	if trimmed == "" {
+		return nil, fmt.Errorf("compose configuration cannot be empty")
+	}
+
+	var raw struct {
+		Services map[string]struct {
+			Privileged  any `yaml:"privileged"`
+			Pid         any `yaml:"pid"`
+			NetworkMode any `yaml:"network_mode"`
+			Volumes     any `yaml:"volumes"`
+		} `yaml:"services"`
+	}
+
+	if err := yaml.Unmarshal([]byte(trimmed), &raw); err != nil {
+		return nil, fmt.Errorf("invalid YAML syntax: %w", err)
+	}
+
+	var warnings []string
+	for svcName, svc := range raw.Services {
+		if svc.Privileged == true || fmt.Sprint(svc.Privileged) == "true" {
+			warnings = append(warnings, fmt.Sprintf("Service '%s' has privileged: true (unrestricted host kernel access)", svcName))
+		}
+		if fmt.Sprint(svc.Pid) == "host" {
+			warnings = append(warnings, fmt.Sprintf("Service '%s' uses host PID namespace (pid: host)", svcName))
+		}
+		if fmt.Sprint(svc.NetworkMode) == "host" {
+			warnings = append(warnings, fmt.Sprintf("Service '%s' uses host networking (network_mode: host)", svcName))
+		}
+
+		// Inspect volume host paths for sensitive host exposure
+		if vList, ok := svc.Volumes.([]any); ok {
+			for _, v := range vList {
+				vStr := fmt.Sprint(v)
+				parts := strings.Split(vStr, ":")
+				hostPart := strings.TrimSpace(parts[0])
+				if hostPart == "/var/run/docker.sock" || strings.HasSuffix(hostPart, "docker.sock") {
+					warnings = append(warnings, fmt.Sprintf("Service '%s' mounts Docker socket (%s)", svcName, hostPart))
+				} else if hostPart == "/" || hostPart == "/etc" || hostPart == "/proc" || hostPart == "/sys" || hostPart == "/root" {
+					warnings = append(warnings, fmt.Sprintf("Service '%s' mounts critical host path (%s)", svcName, hostPart))
+				}
+			}
+		}
+	}
+
+	return warnings, nil
 }
 
 // CountServices parses a compose file and returns the number of declared services.
@@ -190,13 +242,18 @@ func GetDeclaredContainers(composeFilePath string) []Container {
 	return containers
 }
 
-// SaveFiles writes updated compose and .env contents to disk atomically.
+// SaveFiles writes updated compose and .env contents to disk atomically with YAML syntax validation.
 func (s *Scanner) SaveFiles(name, composeContent, envContent string) error {
 	if !IsValidName(name) {
 		return fmt.Errorf("invalid stack name '%s'", name)
 	}
 	if strings.TrimSpace(composeContent) == "" {
 		return fmt.Errorf("compose configuration cannot be empty")
+	}
+
+	// Validate compose YAML syntax before committing to disk
+	if _, err := AuditComposeSecurity(composeContent); err != nil {
+		return err
 	}
 
 	stackPath := filepath.Join(s.baseDir, name)

@@ -79,11 +79,20 @@ func TestAuth(t *testing.T) {
 		t.Errorf("expected env token to be valid")
 	}
 
-	// Case 5: Brute-force rate limiting
+	// Case 5: Per-IP Brute-force rate limiting
 	for i := 0; i < maxFailedAttempts; i++ {
-		_, _ = mEnv.Login("badpassword")
+		_, _ = mEnv.Login("badpassword", "10.0.0.1")
 	}
-	if _, err := mEnv.Login("envpassword"); err == nil {
-		t.Errorf("expected login to be locked out after %d failed attempts", maxFailedAttempts)
+	if _, err := mEnv.Login("envpassword", "10.0.0.1"); err == nil {
+		t.Errorf("expected IP 10.0.0.1 to be locked out after %d failed attempts", maxFailedAttempts)
+	}
+
+	// Another IP (10.0.0.2) must NOT be locked out by 10.0.0.1's failures
+	validToken, err := mEnv.Login("envpassword", "10.0.0.2")
+	if err != nil {
+		t.Fatalf("legitimate IP 10.0.0.2 was blocked by another IP's lockout: %v", err)
+	}
+	if !mEnv.ValidateToken(validToken) {
+		t.Errorf("expected valid token for 10.0.0.2")
 	}
 }
