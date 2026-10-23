@@ -30,7 +30,7 @@ A lightweight web UI and manager for Docker Compose stacks, distributed as a sin
 
 ## Quick Start
 
-### Docker Compose (Recommended)
+### 1. Docker Compose (Standard)
 
 ```yaml
 services:
@@ -48,12 +48,105 @@ services:
       - PORT=8080
 ```
 
-### Standalone Binary
+### 2. Hardened Setup with `docker-socket-proxy` (Recommended for Zero Raw Socket Exposure)
 
-Download the release binary for your architecture (`linux/amd64` or `linux/arm64`) from [Releases](https://github.com/composebox/composebox/releases) and run:
+If you prefer not to mount `/var/run/docker.sock` directly into the web application, run Composebox alongside [`docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy). Composebox connects over an internal Docker network via `DOCKER_HOST`, and sensitive Docker subsystems (Swarm, Secrets, Engine Plugins, System Reclaims) are completely blocked:
+
+```yaml
+services:
+  composebox:
+    image: ghcr.io/composebox/composebox:latest
+    container_name: composebox
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /path/to/your/stacks:/stacks
+    environment:
+      - STACKS_DIR=/stacks
+      - PORT=8080
+      - DOCKER_HOST=tcp://socket-proxy:2375
+    depends_on:
+      - socket-proxy
+    networks:
+      - default
+      - socket-net
+
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: composebox-socket-proxy
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - NETWORKS=1
+      - VOLUMES=1
+      - POST=1
+      - INFO=1
+      - VERSION=1
+      - EVENTS=1
+      - AUTH=0
+      - SECRETS=0
+      - SWARM=0
+      - PLUGINS=0
+      - SYSTEM=0
+    networks:
+      - socket-net
+
+networks:
+  socket-net:
+    internal: true
+```
+*(Also available directly as [`docker-compose.hardened.yml`](docker-compose.hardened.yml).)*
+
+### 3. Rootless Docker
+
+If you run Rootless Docker, map your user-namespaced Docker socket instead of the system root socket:
+
+```yaml
+services:
+  composebox:
+    image: ghcr.io/composebox/composebox:latest
+    container_name: composebox
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /run/user/1000/docker.sock:/var/run/docker.sock
+      - /path/to/your/stacks:/stacks
+    environment:
+      - STACKS_DIR=/stacks
+      - PORT=8080
+```
+
+### 4. Standalone Binary (Bare-Metal / systemd)
+
+Download the release binary for your architecture (`linux/amd64` or `linux/arm64`) from [Releases](https://github.com/composebox/composebox/releases) and run directly on your host without container virtualization:
 
 ```bash
 ./composebox -stacks /path/to/your/stacks -port 8080
+```
+
+To run as a systemd service (e.g. `/etc/systemd/system/composebox.service`):
+
+```ini
+[Unit]
+Description=Composebox Docker Compose Manager
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=docker
+ExecStart=/usr/local/bin/composebox -stacks /home/ubuntu/services -port 8080
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 ---
@@ -132,12 +225,33 @@ The web interface includes built-in keyboard navigation:
 
 ---
 
-## Authentication & Session Security
+## Security Architecture & Best Practices
 
-1. **Setup Mode:** If launched without `COMPOSEBOX_PASSWORD`, visiting the web interface initiates a first-run setup wizard asking for an admin password. The password is encrypted with bcrypt and stored with `0600` file permissions at `.composebox.auth` inside your stacks directory.
-2. **Persistent HMAC Sessions:** Session tokens are cryptographically signed using HMAC-SHA256 with a persistent secret key stored at `.composebox.secret`. Active sessions survive server restarts.
-3. **Headless & GitOps:** Pass `COMPOSEBOX_PASSWORD=your-secret-password` to bypass the interactive first-run setup in automated or containerized deployments.
-4. **Local / Air-gapped:** Pass `-no-auth` or set `NO_AUTH=true` when running in protected environments where authentication is handled upstream.
+Composebox is engineered with defense-in-depth principles across the application, network, and host boundaries:
+
+### 1. Docker Daemon Isolation (Zero Raw Socket Exposure)
+- **Native `DOCKER_HOST` Support:** Composebox communicates with Docker via the standard Docker CLI, respecting the `DOCKER_HOST` environment variable.
+- **Socket Proxy Compatible:** Rather than mounting `/var/run/docker.sock` directly into the container, users can deploy the official [hardened recipe](docker-compose.hardened.yml) using [`docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy) to limit the Docker API strictly to container lifecycle verbs while blocking daemon-level administrative APIs (Swarm, Secrets, Engine plugins, system reclaims).
+- **Rootless Docker Ready:** Runs out-of-the-box with Rootless Docker (`/run/user/1000/docker.sock`), ensuring that even if a container could escape, it lands as an unprivileged user on the host OS.
+
+### 2. Container & Process Isolation
+- **Non-Root Execution:** The production container runs with non-root user and group (`USER 1001:1001`) with Docker group membership (`GID 988`), preventing any container-internal privilege escalation.
+- **Least Privilege Bind Mounts:** Stacks directory mounts require only standard user ownership, and auth credentials are written with strict `0600` permissions.
+
+### 3. CSRF & Same-Origin Defense
+- **Origin & Referer Enforcement:** All state-changing REST endpoints (`POST`, `DELETE`) enforce strict Origin and Referer validation against the server host to prevent cross-site request forgery.
+- **Custom Header Verification:** Protected mutation calls require the `X-Composebox-Client` header, which modern browsers prevent cross-origin scripts from forging under standard CORS policies.
+- **Secure Cookie Flags:** Session cookies are set with `HttpOnly`, `SameSite=Lax`, and `Path=/`.
+
+### 4. Authentication & Session Security
+- **Setup Wizard:** Fresh installations without `COMPOSEBOX_PASSWORD` launch an interactive first-run wizard. The admin password is encrypted with bcrypt and stored at `.composebox.auth` with `0600` permissions.
+- **Persistent HMAC Sessions:** Session tokens are cryptographically signed with HMAC-SHA256 using a persistent secret stored at `.composebox.secret`. Sessions survive server restarts without re-login.
+- **Per-IP Brute-Force Rate Limiting:** Login attempts are rate-limited per client IP with exponential backoff to prevent brute-force attacks.
+- **Headless & GitOps:** Pass `COMPOSEBOX_PASSWORD=your-secret-password` or `NO_AUTH=true` for automated or air-gapped deployments behind upstream authentication (e.g. Cloudflare Access, Authelia).
+
+### 5. Data Integrity & Safe Stack Operations
+- **Atomic File Writes:** Changes to `compose.yaml` and `.env` are staged into temporary files and swapped atomically with `fsync` to eliminate corrupted or partially written configurations.
+- **Safe Stack Deletion (.trash archive):** Deleting a stack in Composebox moves the directory to `.trash/<stack>_<timestamp>` instead of executing destructive `rm -rf`. Additionally, deletion is automatically blocked if the stack contains persistent database or volume subdirectories.
 
 ---
 
