@@ -144,6 +144,26 @@
     }
   }
 
+  async function waitForServerOnline(timeoutMs = 25000) {
+    const start = Date.now();
+    await new Promise((r) => setTimeout(r, 1200));
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const res = await fetch('/api/health', {
+          cache: 'no-store',
+          headers: { 'X-Composebox-Client': 'true' },
+        });
+        if (res.ok) {
+          return true;
+        }
+      } catch {
+        // Still rebooting
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return false;
+  }
+
   async function handleAction(action) {
     if (!currentStack || activeAction) return;
     activeAction = action;
@@ -151,6 +171,10 @@
     consoleLogs = `[composebox] Starting action '${action}' for stack '${currentStack.name}'...\n`;
     consoleStatus = 'running';
     consoleOpen = true;
+
+    const isSelfAction =
+      currentStack.name?.toLowerCase() === 'composebox' &&
+      (action === 'restart' || action === 'update' || action === 'up');
 
     try {
       await triggerAction(currentStack.name, action, (chunk) => {
@@ -162,6 +186,19 @@
       // Reload current stack details to refresh containers and status
       await selectStack(currentStack.name, false);
     } catch (err) {
+      if (isSelfAction) {
+        consoleLogs += `\n[composebox] Server connection dropped while restarting Composebox container.\n`;
+        consoleLogs += `[composebox] Reconnecting to server...\n`;
+        const online = await waitForServerOnline();
+        if (online) {
+          consoleStatus = 'success';
+          consoleLogs += `[composebox] Connection restored! Composebox is back online.\n`;
+          showToast(`Action '${action}' completed successfully`, 'success');
+          await loadStacks();
+          await selectStack(currentStack.name, false);
+          return;
+        }
+      }
       consoleStatus = 'error';
       consoleLogs += `\n[composebox:error] ${err.message}\n`;
       showToast(err.message, 'error');
