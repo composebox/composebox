@@ -19,6 +19,7 @@
   import Terminal from './lib/Terminal.svelte';
   import ActionConsole from './lib/ActionConsole.svelte';
   import Modal from './lib/Modal.svelte';
+  import Logo from './lib/Logo.svelte';
 
   let authState = $state('loading'); // 'loading' | 'setup' | 'login' | 'app'
   let authEnabled = $state(true);
@@ -325,12 +326,10 @@
           </button>
           <span class="ml-2 text-xs font-medium text-zinc-300">Stacks</span>
         </div>
-        <div class="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-2 p-4 text-center">
-          <svg class="h-8 w-8 text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
-            <path d="m3.3 7 8.7 5 8.7-5"/>
-            <path d="M12 22V12"/>
-          </svg>
+        <div class="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-2.5 p-4 text-center">
+          <div class="opacity-25 grayscale">
+            <Logo size={32} />
+          </div>
           <p class="text-xs">Select a stack to view containers and edit files</p>
         </div>
       {:else}
@@ -601,11 +600,7 @@
       <!-- Header -->
       <div class="flex items-start gap-3.5">
         <div class="relative rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-zinc-100 shrink-0 shadow-inner">
-          <svg class="h-6 w-6 text-zinc-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
-            <path d="m3.3 7 8.7 5 8.7-5"/>
-            <path d="M12 22V12"/>
-          </svg>
+          <Logo size={24} />
           <span class="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-zinc-950 font-black text-[10px] shadow-sm">
             !
           </span>
