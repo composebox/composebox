@@ -43,11 +43,13 @@ RUN apk add --no-cache \
     curl \
     docker-cli \
     docker-cli-compose \
-    tzdata && \
-    addgroup -g 1001 composebox && \
+    tzdata
+
+# Configure non-root user with host-compatible GID (988) for docker socket access
+RUN addgroup -g 1001 composebox && \
     adduser -u 1001 -G composebox -s /bin/sh -D composebox && \
-    addgroup -g 988 docker-host 2>/dev/null || true && \
-    addgroup composebox docker-host 2>/dev/null || true && \
+    (getent group 988 >/dev/null || addgroup -g 988 docker-host) && \
+    addgroup composebox $(getent group 988 | cut -d: -f1) && \
     mkdir -p /stacks && \
     chown -R 1001:1001 /stacks
 

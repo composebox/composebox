@@ -167,15 +167,70 @@ func TestAuditComposeSecurity(t *testing.T) {
     privileged: true
     network_mode: host
     pid: host
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - /etc:/host-etc:ro
 `
 	warnings, err = AuditComposeSecurity(riskyYaml)
 	if err != nil {
 		t.Fatalf("unexpected error on risky YAML: %v", err)
 	}
-	if len(warnings) < 5 {
-		t.Errorf("expected at least 5 security warnings, got %d: %v", len(warnings), warnings)
+	if len(warnings) < 6 {
+		t.Errorf("expected at least 6 security warnings, got %d: %v", len(warnings), warnings)
+	}
+}
+
+func TestDeleteStackSafety(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "composebox-delete-safety-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	scanner := NewScanner(tempDir)
+
+	// Create a stack with persistent data subdirectory
+	if err := scanner.CreateStack("db-stack", "services:\n  db:\n    image: postgres\n", ""); err != nil {
+		t.Fatalf("failed to create db-stack: %v", err)
+	}
+	dataPath := tempDir + "/db-stack/pgdata"
+	if err := os.Mkdir(dataPath, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+
+	// Deletion must fail because persistent directory exists
+	if err := scanner.DeleteStack("db-stack"); err == nil {
+		t.Fatalf("expected DeleteStack to fail on stack containing data directory")
+	}
+
+	// Remove data dir, add unexpected file (e.g. dump.sql)
+	if err := os.Remove(dataPath); err != nil {
+		t.Fatalf("failed to remove data dir: %v", err)
+	}
+	if err := os.WriteFile(tempDir+"/db-stack/dump.sql", []byte("DATA"), 0644); err != nil {
+		t.Fatalf("failed to create dump.sql: %v", err)
+	}
+
+	// Deletion must fail because non-compose file exists
+	if err := scanner.DeleteStack("db-stack"); err == nil {
+		t.Fatalf("expected DeleteStack to fail on stack containing unexpected file")
+	}
+
+	// Remove dump.sql -> now clean stack containing only compose.yaml
+	if err := os.Remove(tempDir + "/db-stack/dump.sql"); err != nil {
+		t.Fatalf("failed to remove dump.sql: %v", err)
+	}
+
+	// Deletion should succeed and move directory to .trash/
+	if err := scanner.DeleteStack("db-stack"); err != nil {
+		t.Fatalf("expected clean DeleteStack to succeed: %v", err)
+	}
+
+	trashEntries, err := os.ReadDir(tempDir + "/.trash")
+	if err != nil || len(trashEntries) == 0 {
+		t.Fatalf("expected stack to be moved into .trash archive, got err: %v, entries: %d", err, len(trashEntries))
 	}
 }

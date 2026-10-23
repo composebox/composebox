@@ -113,7 +113,7 @@ func (s *Server) handleAuthSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.authManager.SetCookie(w, r, token)
-	respondJSON(w, http.StatusOK, map[string]any{"success": true, "token": token})
+	respondJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -131,10 +131,13 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.authManager.SetCookie(w, r, token)
-	respondJSON(w, http.StatusOK, map[string]any{"success": true, "token": token})
+	respondJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie("composebox_session"); err == nil && cookie.Value != "" {
+		s.authManager.RevokeToken(cookie.Value)
+	}
 	s.authManager.ClearCookie(w, r)
 	respondJSON(w, http.StatusOK, map[string]any{"success": true})
 }
@@ -509,16 +512,37 @@ func getClientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
+func splitHostAndPort(raw string) (string, string) {
+	host, port, err := net.SplitHostPort(raw)
+	if err != nil {
+		return strings.TrimSpace(raw), ""
+	}
+	return host, port
+}
+
 func isSameHost(originHost, requestHost string) bool {
-	h1, _, err1 := net.SplitHostPort(originHost)
-	if err1 != nil {
-		h1 = originHost
+	h1, p1 := splitHostAndPort(originHost)
+	h2, p2 := splitHostAndPort(requestHost)
+
+	if !strings.EqualFold(h1, h2) {
+		return false
 	}
-	h2, _, err2 := net.SplitHostPort(requestHost)
-	if err2 != nil {
-		h2 = requestHost
+
+	// If both specify ports, ports must match
+	if p1 != "" && p2 != "" {
+		return p1 == p2
 	}
-	return strings.EqualFold(h1, h2)
+
+	// Standard default ports (80 for HTTP, 443 for HTTPS) match empty port
+	if (p1 == "80" || p1 == "443") && p2 == "" {
+		return true
+	}
+	if (p2 == "80" || p2 == "443") && p1 == "" {
+		return true
+	}
+
+	// If one specifies an explicit custom port and the other does not, reject
+	return p1 == p2
 }
 
 func respondJSON(w http.ResponseWriter, status int, data any) {

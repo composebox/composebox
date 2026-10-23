@@ -40,13 +40,14 @@ type ipRateLimit struct {
 
 // Manager handles user authentication, session tokens, rate limiting, and middleware.
 type Manager struct {
-	mu             sync.Mutex
+	mu             sync.RWMutex
 	authFilePath   string
 	secretFilePath string
 	envPassword    string
 	noAuth         bool
 	sessionSecret  []byte
 	ipLimits       map[string]*ipRateLimit
+	revokedTokens  map[string]int64
 }
 
 // New creates an Auth Manager and ensures the stacks directory and session secret exist.
@@ -62,6 +63,7 @@ func New(stacksDir string, envPassword string, noAuth bool) (*Manager, error) {
 		envPassword:    envPassword,
 		noAuth:         noAuth,
 		ipLimits:       make(map[string]*ipRateLimit),
+		revokedTokens:  make(map[string]int64),
 	}
 
 	if noAuth {
@@ -102,7 +104,11 @@ func (m *Manager) IsSetupRequired() bool {
 	if m.noAuth || m.envPassword != "" {
 		return false
 	}
-	return !fileExists(m.authFilePath)
+	_, err := os.Stat(m.authFilePath)
+	if err != nil {
+		return os.IsNotExist(err)
+	}
+	return false
 }
 
 // Setup creates the initial admin password atomically and prevents race conditions.
@@ -143,7 +149,7 @@ func (m *Manager) Setup(password string) (string, error) {
 	}
 
 	m.ipLimits = make(map[string]*ipRateLimit)
-	return m.generateToken(), nil
+	return m.generateTokenLocked(), nil
 }
 
 // Login verifies the password with per-IP brute-force protection and returns a new session token.
@@ -180,7 +186,13 @@ func (m *Manager) Login(password string, clientIP ...string) (string, error) {
 	// 2. Auth file check
 	data, err := os.ReadFile(m.authFilePath)
 	if err != nil {
-		return "", errors.New("no password configured, setup required")
+		if os.IsPermission(err) {
+			return "", fmt.Errorf("permission denied reading auth file: check file ownership and UID permissions")
+		}
+		if os.IsNotExist(err) {
+			return "", errors.New("no password configured, setup required")
+		}
+		return "", fmt.Errorf("failed to read auth file: %w", err)
 	}
 
 	var sa storedAuth
@@ -229,7 +241,36 @@ func (m *Manager) resetFailures(ip string) {
 	delete(m.ipLimits, ip)
 }
 
-// ValidateToken verifies a token signature and expiration in constant time.
+// RevokeToken marks an active session token as revoked until its expiration.
+func (m *Manager) RevokeToken(token string) {
+	if m.noAuth || token == "" {
+		return
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return
+	}
+	expUnix, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || time.Now().Unix() > expUnix {
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now().Unix()
+	if len(m.revokedTokens) > 500 {
+		for tok, exp := range m.revokedTokens {
+			if now > exp {
+				delete(m.revokedTokens, tok)
+			}
+		}
+	}
+
+	m.revokedTokens[token] = expUnix
+}
+
+// ValidateToken verifies a token signature, expiration, and revocation status in constant time.
 func (m *Manager) ValidateToken(token string) bool {
 	if m.noAuth {
 		return true
@@ -245,7 +286,14 @@ func (m *Manager) ValidateToken(token string) bool {
 		return false
 	}
 
-	expectedSig := m.sign(expStr)
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if _, revoked := m.revokedTokens[token]; revoked {
+		return false
+	}
+
+	expectedSig := m.signLocked(expStr)
 	return hmac.Equal([]byte(sigHex), []byte(expectedSig))
 }
 
@@ -310,13 +358,25 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 }
 
 func (m *Manager) generateToken() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.generateTokenLocked()
+}
+
+func (m *Manager) generateTokenLocked() string {
 	expUnix := time.Now().Add(tokenTTL).Unix()
 	expStr := strconv.FormatInt(expUnix, 10)
-	sig := m.sign(expStr)
+	sig := m.signLocked(expStr)
 	return fmt.Sprintf("%s.%s", expStr, sig)
 }
 
 func (m *Manager) sign(data string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.signLocked(data)
+}
+
+func (m *Manager) signLocked(data string) string {
 	h := hmac.New(sha256.New, m.sessionSecret)
 	h.Write([]byte(data))
 	return hex.EncodeToString(h.Sum(nil))

@@ -179,4 +179,47 @@ func TestAuthEndpoints(t *testing.T) {
 	if noHeaderRec.Code != http.StatusForbidden {
 		t.Errorf("expected 403 Forbidden for missing X-Composebox-Client header, got %d", noHeaderRec.Code)
 	}
+
+	// 11. Logout revokes token server-side
+	logoutReq := httptest.NewRequest("POST", "/api/auth/logout", nil)
+	logoutReq.Header.Set("X-Composebox-Client", "true")
+	logoutReq.AddCookie(sessionCookie)
+	logoutRec := httptest.NewRecorder()
+	handler.ServeHTTP(logoutRec, logoutReq)
+	if logoutRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK on logout, got %d", logoutRec.Code)
+	}
+
+	// Reusing session cookie after logout must fail with 401 Unauthorized
+	postLogoutReq := httptest.NewRequest("GET", "/api/stacks", nil)
+	postLogoutReq.AddCookie(sessionCookie)
+	postLogoutRec := httptest.NewRecorder()
+	handler.ServeHTTP(postLogoutRec, postLogoutReq)
+	if postLogoutRec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 Unauthorized after logout revocation, got %d", postLogoutRec.Code)
+	}
+}
+
+func TestIsSameHost(t *testing.T) {
+	cases := []struct {
+		origin  string
+		request string
+		want    bool
+	}{
+		{"localhost:8080", "localhost:8080", true},
+		{"localhost:8080", "localhost:9090", false},
+		{"compose.skp.my.id", "compose.skp.my.id", true},
+		{"compose.skp.my.id:443", "compose.skp.my.id", true},
+		{"compose.skp.my.id", "compose.skp.my.id:443", true},
+		{"compose.skp.my.id:80", "compose.skp.my.id", true},
+		{"compose.skp.my.id:8080", "compose.skp.my.id", false},
+		{"evil.com:8080", "localhost:8080", false},
+	}
+
+	for _, tc := range cases {
+		got := isSameHost(tc.origin, tc.request)
+		if got != tc.want {
+			t.Errorf("isSameHost(%q, %q) = %v, want %v", tc.origin, tc.request, got, tc.want)
+		}
+	}
 }

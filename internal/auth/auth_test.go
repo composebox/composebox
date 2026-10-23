@@ -95,4 +95,10 @@ func TestAuth(t *testing.T) {
 	if !mEnv.ValidateToken(validToken) {
 		t.Errorf("expected valid token for 10.0.0.2")
 	}
+
+	// Case 6: Token revocation on logout
+	mEnv.RevokeToken(validToken)
+	if mEnv.ValidateToken(validToken) {
+		t.Errorf("expected revoked token to fail validation")
+	}
 }

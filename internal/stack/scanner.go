@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -130,6 +131,8 @@ func AuditComposeSecurity(composeContent string) ([]string, error) {
 			Pid         any `yaml:"pid"`
 			NetworkMode any `yaml:"network_mode"`
 			Volumes     any `yaml:"volumes"`
+			CapAdd      any `yaml:"cap_add"`
+			SecurityOpt any `yaml:"security_opt"`
 		} `yaml:"services"`
 	}
 
@@ -149,15 +152,50 @@ func AuditComposeSecurity(composeContent string) ([]string, error) {
 			warnings = append(warnings, fmt.Sprintf("Service '%s' uses host networking (network_mode: host)", svcName))
 		}
 
-		// Inspect volume host paths for sensitive host exposure
+		// Inspect cap_add
+		if svc.CapAdd != nil {
+			var capList []string
+			switch c := svc.CapAdd.(type) {
+			case []any:
+				for _, item := range c {
+					capList = append(capList, strings.ToUpper(fmt.Sprint(item)))
+				}
+			case string:
+				capList = append(capList, strings.ToUpper(c))
+			}
+			for _, capItem := range capList {
+				if capItem == "ALL" || capItem == "SYS_ADMIN" || capItem == "CAP_SYS_ADMIN" {
+					warnings = append(warnings, fmt.Sprintf("Service '%s' adds elevated capability (%s)", svcName, capItem))
+				}
+			}
+		}
+
+		// Inspect security_opt
+		if svc.SecurityOpt != nil {
+			var optList []string
+			switch o := svc.SecurityOpt.(type) {
+			case []any:
+				for _, item := range o {
+					optList = append(optList, strings.ToLower(fmt.Sprint(item)))
+				}
+			case string:
+				optList = append(optList, strings.ToLower(o))
+			}
+			for _, optItem := range optList {
+				if strings.Contains(optItem, "unconfined") {
+					warnings = append(warnings, fmt.Sprintf("Service '%s' disables container security sandbox (%s)", svcName, optItem))
+				}
+			}
+		}
+
+		// Inspect volume host paths for sensitive host exposure (short and long form)
 		if vList, ok := svc.Volumes.([]any); ok {
 			for _, v := range vList {
-				vStr := fmt.Sprint(v)
-				parts := strings.Split(vStr, ":")
-				hostPart := strings.TrimSpace(parts[0])
-				if hostPart == "/var/run/docker.sock" || strings.HasSuffix(hostPart, "docker.sock") {
-					warnings = append(warnings, fmt.Sprintf("Service '%s' mounts Docker socket (%s)", svcName, hostPart))
-				} else if hostPart == "/" || hostPart == "/etc" || hostPart == "/proc" || hostPart == "/sys" || hostPart == "/root" {
+				hostPart := extractVolumeHostPath(v)
+				if hostPart == "" {
+					continue
+				}
+				if hostPart == "/" || hostPart == "/etc" || hostPart == "/proc" || hostPart == "/sys" || hostPart == "/root" || hostPart == "/var/run" {
 					warnings = append(warnings, fmt.Sprintf("Service '%s' mounts critical host path (%s)", svcName, hostPart))
 				}
 			}
@@ -165,6 +203,23 @@ func AuditComposeSecurity(composeContent string) ([]string, error) {
 	}
 
 	return warnings, nil
+}
+
+func extractVolumeHostPath(v any) string {
+	switch val := v.(type) {
+	case string:
+		parts := strings.Split(val, ":")
+		return strings.TrimSpace(parts[0])
+	case map[string]any:
+		if src, ok := val["source"]; ok && src != nil {
+			return strings.TrimSpace(fmt.Sprint(src))
+		}
+	case map[any]any:
+		if src, ok := val["source"]; ok && src != nil {
+			return strings.TrimSpace(fmt.Sprint(src))
+		}
+	}
+	return ""
 }
 
 // CountServices parses a compose file and returns the number of declared services.
@@ -302,7 +357,21 @@ func (s *Scanner) CreateStack(name, composeContent, envContent string) error {
 	return s.SaveFiles(trimmed, composeContent, envContent)
 }
 
+var allowedDeleteFiles = map[string]bool{
+	"compose.yaml":        true,
+	"compose.yml":         true,
+	"docker-compose.yaml": true,
+	"docker-compose.yml":  true,
+	".env":                true,
+	".env.example":        true,
+	"README.md":           true,
+	"readme.md":           true,
+	".gitignore":          true,
+}
+
 // DeleteStack safely removes a stack directory from disk.
+// If the directory contains persistent data volumes or subdirectories, deletion is rejected.
+// Safe stacks are moved to .trash/ rather than permanently deleted.
 func (s *Scanner) DeleteStack(name string) error {
 	trimmed := strings.TrimSpace(name)
 	if !IsValidName(trimmed) {
@@ -314,7 +383,35 @@ func (s *Scanner) DeleteStack(name string) error {
 		return fmt.Errorf("stack directory '%s' does not exist", trimmed)
 	}
 
-	return os.RemoveAll(stackPath)
+	// Safety check: detect non-compose files or data directories
+	entries, err := os.ReadDir(stackPath)
+	if err != nil {
+		return fmt.Errorf("failed to inspect stack directory: %w", err)
+	}
+
+	var nonComposeEntries []string
+	for _, entry := range entries {
+		if entry.IsDir() || !allowedDeleteFiles[entry.Name()] {
+			nonComposeEntries = append(nonComposeEntries, entry.Name())
+		}
+	}
+
+	if len(nonComposeEntries) > 0 {
+		return fmt.Errorf("stack directory '%s' contains persistent data or extra directories (%s); remove volumes manually on host before deleting stack to prevent data loss", trimmed, strings.Join(nonComposeEntries, ", "))
+	}
+
+	// Move to .trash archive instead of permanent deletion
+	trashDir := filepath.Join(s.baseDir, ".trash")
+	if err := os.MkdirAll(trashDir, 0700); err != nil {
+		return fmt.Errorf("failed to create trash directory: %w", err)
+	}
+
+	trashDest := filepath.Join(trashDir, fmt.Sprintf("%s-%d", trimmed, time.Now().UnixNano()))
+	if err := os.Rename(stackPath, trashDest); err != nil {
+		return fmt.Errorf("failed to move stack to trash: %w", err)
+	}
+
+	return nil
 }
 
 // IsValidName checks if a stack name meets strict filesystem and container naming rules.
