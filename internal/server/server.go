@@ -22,15 +22,17 @@ import (
 
 // Server handles HTTP API requests and serves embedded UI assets.
 type Server struct {
-	scanner      *stack.Scanner
-	dockerClient *stack.DockerClient
-	authManager  *auth.Manager
-	mux          *http.ServeMux
-	version      string
+	scanner        *stack.Scanner
+	dockerClient   *stack.DockerClient
+	authManager    *auth.Manager
+	mux            *http.ServeMux
+	version        string
+	trustedProxies []*net.IPNet
+	trustedIPs     []net.IP
 }
 
 // New creates a new HTTP server.
-func New(s *stack.Scanner, d *stack.DockerClient, a *auth.Manager, version string) *Server {
+func New(s *stack.Scanner, d *stack.DockerClient, a *auth.Manager, version string, trustedProxiesStr ...string) *Server {
 	if version == "" {
 		version = "dev"
 	}
@@ -41,8 +43,53 @@ func New(s *stack.Scanner, d *stack.DockerClient, a *auth.Manager, version strin
 		mux:          http.NewServeMux(),
 		version:      version,
 	}
+
+	var proxyList string
+	if len(trustedProxiesStr) > 0 && trustedProxiesStr[0] != "" {
+		proxyList = trustedProxiesStr[0]
+	} else {
+		proxyList = "127.0.0.1,::1"
+	}
+	srv.parseTrustedProxies(proxyList)
+
 	srv.routes()
 	return srv
+}
+
+func (s *Server) parseTrustedProxies(raw string) {
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if _, ipNet, err := net.ParseCIDR(entry); err == nil {
+			s.trustedProxies = append(s.trustedProxies, ipNet)
+		} else if ip := net.ParseIP(entry); ip != nil {
+			s.trustedIPs = append(s.trustedIPs, ip)
+		}
+	}
+}
+
+func (s *Server) isTrustedProxy(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, tip := range s.trustedIPs {
+		if tip.Equal(ip) {
+			return true
+		}
+	}
+	for _, tnet := range s.trustedProxies {
+		if tnet.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // Handler returns the HTTP handler with security headers, CSRF validation, and logging configured.
@@ -124,7 +171,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.authManager.Login(req.Password, getClientIP(r))
+	token, err := s.authManager.Login(req.Password, s.getClientIP(r))
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -245,7 +292,11 @@ func (s *Server) handleSaveStack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.scanner.SaveFiles(name, req.ComposeContent, req.EnvContent); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		if strings.Contains(err.Error(), "YAML") || strings.Contains(err.Error(), "syntax") || strings.Contains(err.Error(), "invalid") {
+			respondError(w, http.StatusBadRequest, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
@@ -291,8 +342,8 @@ func (s *Server) handleDeleteStack(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	_, _, runningCount, _ := s.dockerClient.GetContainers(ctx, details.Path, details.ComposeFile)
-	if runningCount > 0 {
+	_, _, runningCount, err := s.dockerClient.GetContainers(ctx, details.Path, details.ComposeFile)
+	if err == nil && runningCount > 0 {
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("cannot delete running stack '%s'. Please stop it first.", name))
 		return
 	}
@@ -318,23 +369,29 @@ func (s *Server) handleStackAction(action string) http.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
-		defer cancel()
+		// Decouple operation execution from HTTP client disconnects so in-flight compose commands
+		// run to completion safely and don't leave stacks in a half-created/corrupted state.
+		actionTimeout := 5 * time.Minute
+		if action == "pull" || action == "update" {
+			actionTimeout = 15 * time.Minute
+		}
+		opCtx, opCancel := context.WithTimeout(context.WithoutCancel(r.Context()), actionTimeout)
+		defer opCancel()
 
 		if r.Header.Get("Accept") == "application/json" {
 			var output string
 			var actionErr error
 			switch action {
 			case "up":
-				output, actionErr = s.dockerClient.Up(ctx, details.Path, details.ComposeFile)
+				output, actionErr = s.dockerClient.Up(opCtx, details.Path, details.ComposeFile)
 			case "down":
-				output, actionErr = s.dockerClient.Down(ctx, details.Path, details.ComposeFile)
+				output, actionErr = s.dockerClient.Down(opCtx, details.Path, details.ComposeFile)
 			case "restart":
-				output, actionErr = s.dockerClient.Restart(ctx, details.Path, details.ComposeFile)
+				output, actionErr = s.dockerClient.Restart(opCtx, details.Path, details.ComposeFile)
 			case "pull":
-				output, actionErr = s.dockerClient.Pull(ctx, details.Path, details.ComposeFile)
+				output, actionErr = s.dockerClient.Pull(opCtx, details.Path, details.ComposeFile)
 			case "update":
-				output, actionErr = s.dockerClient.Update(ctx, details.Path, details.ComposeFile)
+				output, actionErr = s.dockerClient.Update(opCtx, details.Path, details.ComposeFile)
 			default:
 				respondError(w, http.StatusBadRequest, "unknown action")
 				return
@@ -372,15 +429,15 @@ func (s *Server) handleStackAction(action string) http.HandlerFunc {
 		var actionErr error
 		switch action {
 		case "up":
-			actionErr = s.dockerClient.UpStream(ctx, details.Path, details.ComposeFile, fw)
+			actionErr = s.dockerClient.UpStream(opCtx, details.Path, details.ComposeFile, fw)
 		case "down":
-			actionErr = s.dockerClient.DownStream(ctx, details.Path, details.ComposeFile, fw)
+			actionErr = s.dockerClient.DownStream(opCtx, details.Path, details.ComposeFile, fw)
 		case "restart":
-			actionErr = s.dockerClient.RestartStream(ctx, details.Path, details.ComposeFile, fw)
+			actionErr = s.dockerClient.RestartStream(opCtx, details.Path, details.ComposeFile, fw)
 		case "pull":
-			actionErr = s.dockerClient.PullStream(ctx, details.Path, details.ComposeFile, fw)
+			actionErr = s.dockerClient.PullStream(opCtx, details.Path, details.ComposeFile, fw)
 		case "update":
-			actionErr = s.dockerClient.UpdateStream(ctx, details.Path, details.ComposeFile, fw)
+			actionErr = s.dockerClient.UpdateStream(opCtx, details.Path, details.ComposeFile, fw)
 		default:
 			fmt.Fprintf(fw, "Error: unknown action '%s'\n", action)
 			return
@@ -497,19 +554,24 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func getClientIP(r *http.Request) string {
-	if cf := r.Header.Get("CF-Connecting-IP"); cf != "" {
-		return strings.TrimSpace(cf)
+func (s *Server) getClientIP(r *http.Request) string {
+	remoteHost, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		remoteHost = r.RemoteAddr
 	}
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
+
+	// Only trust forwarding headers if the remote caller is a trusted proxy
+	if s.isTrustedProxy(r.RemoteAddr) {
+		if cf := r.Header.Get("CF-Connecting-IP"); cf != "" {
+			return strings.TrimSpace(cf)
+		}
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			return strings.TrimSpace(parts[0])
+		}
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return r.RemoteAddr
+
+	return remoteHost
 }
 
 func splitHostAndPort(raw string) (string, string) {

@@ -223,3 +223,39 @@ func TestIsSameHost(t *testing.T) {
 		}
 	}
 }
+
+func TestGetClientIP_TrustedProxies(t *testing.T) {
+	srv, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// 1. Untrusted caller supplying spoofed headers -> must ignore headers and return remote host
+	reqUntrusted := httptest.NewRequest("GET", "/api/health", nil)
+	reqUntrusted.RemoteAddr = "198.51.100.5:12345"
+	reqUntrusted.Header.Set("X-Forwarded-For", "203.0.113.195")
+	reqUntrusted.Header.Set("CF-Connecting-IP", "203.0.113.199")
+
+	ipUntrusted := srv.getClientIP(reqUntrusted)
+	if ipUntrusted != "198.51.100.5" {
+		t.Errorf("expected untrusted IP 198.51.100.5, got %s", ipUntrusted)
+	}
+
+	// 2. Trusted caller (127.0.0.1) supplying CF-Connecting-IP -> trust header
+	reqTrustedCF := httptest.NewRequest("GET", "/api/health", nil)
+	reqTrustedCF.RemoteAddr = "127.0.0.1:54321"
+	reqTrustedCF.Header.Set("CF-Connecting-IP", "203.0.113.50")
+
+	ipTrustedCF := srv.getClientIP(reqTrustedCF)
+	if ipTrustedCF != "203.0.113.50" {
+		t.Errorf("expected trusted CF-Connecting-IP 203.0.113.50, got %s", ipTrustedCF)
+	}
+
+	// 3. Trusted caller supplying X-Forwarded-For -> trust first entry
+	reqTrustedXFF := httptest.NewRequest("GET", "/api/health", nil)
+	reqTrustedXFF.RemoteAddr = "127.0.0.1:54321"
+	reqTrustedXFF.Header.Set("X-Forwarded-For", "198.51.100.88, 10.0.0.1")
+
+	ipTrustedXFF := srv.getClientIP(reqTrustedXFF)
+	if ipTrustedXFF != "198.51.100.88" {
+		t.Errorf("expected trusted X-Forwarded-For 198.51.100.88, got %s", ipTrustedXFF)
+	}
+}

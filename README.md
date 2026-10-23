@@ -162,6 +162,7 @@ Settings can be specified using command-line arguments or environment variables.
 | `-stacks` | `STACKS_DIR` | `./stacks` | Directory where Docker Compose stacks are stored |
 | `-password` | `COMPOSEBOX_PASSWORD` | *(empty)* | Predefined admin password (skips web setup) |
 | `-no-auth` | `NO_AUTH` | `false` | Disable authentication entirely |
+| `-trusted-proxies` | `TRUSTED_PROXIES` | `127.0.0.1,::1` | Comma-separated list of trusted proxy IPs/CIDRs allowed to set client IP headers |
 | `-version` | — | — | Print version information and exit |
 
 ---
@@ -242,16 +243,17 @@ Composebox is engineered with defense-in-depth principles across the application
 ### 3. CSRF & Same-Origin Defense
 - **Origin & Referer Enforcement:** All state-changing REST endpoints (`POST`, `DELETE`) enforce strict Origin and Referer validation against the server host to prevent cross-site request forgery.
 - **Custom Header Verification:** Protected mutation calls require the `X-Composebox-Client` header, which modern browsers prevent cross-origin scripts from forging under standard CORS policies.
-- **Secure Cookie Flags:** Session cookies are set with `HttpOnly`, `SameSite=Lax`, and `Path=/`.
+- **Secure Cookie Flags:** Session cookies are set with `HttpOnly`, `SameSite=Strict`, and `Path=/`.
 
 ### 4. Authentication & Session Security
 - **Setup Wizard:** Fresh installations without `COMPOSEBOX_PASSWORD` launch an interactive first-run wizard. The admin password is encrypted with bcrypt and stored at `.composebox.auth` with `0600` permissions.
 - **Persistent HMAC Sessions:** Session tokens are cryptographically signed with HMAC-SHA256 using a persistent secret stored at `.composebox.secret`. Sessions survive server restarts without re-login.
-- **Per-IP Brute-Force Rate Limiting:** Login attempts are rate-limited per client IP with exponential backoff to prevent brute-force attacks.
+- **Per-IP Brute-Force Rate Limiting:** Login attempts are rate-limited per client IP with a 5-failure threshold and a 30-second lockout window to prevent brute-force attacks. Forwarding headers (`CF-Connecting-IP`, `X-Forwarded-For`) are only evaluated when the caller originates from configured `TRUSTED_PROXIES`.
 - **Headless & GitOps:** Pass `COMPOSEBOX_PASSWORD=your-secret-password` or `NO_AUTH=true` for automated or air-gapped deployments behind upstream authentication (e.g. Cloudflare Access, Authelia).
 
 ### 5. Data Integrity & Safe Stack Operations
-- **Atomic File Writes:** Changes to `compose.yaml` and `.env` are staged into temporary files and swapped atomically with `fsync` to eliminate corrupted or partially written configurations.
+- **Atomic File Writes with Physical Fsync:** Changes to `compose.yaml` and `.env` are staged into temporary files, synced to disk via `fsync` on both data and parent directory entries, and swapped atomically to eliminate corrupted or partially written configurations.
+- **Decoupled Process Execution:** Lifecycle operations (`up`, `down`, `restart`, `pull`, `update`) are decoupled from client HTTP request lifetimes (`context.WithoutCancel`), preventing broken or partial containers if a browser tab is closed or reloaded mid-operation. Extended 15-minute deadlines are granted to large registry pulls.
 - **Safe Stack Deletion (.trash archive):** Deleting a stack in Composebox moves the directory to `.trash/<stack>_<timestamp>` instead of executing destructive `rm -rf`. Additionally, deletion is automatically blocked if the stack contains persistent database or volume subdirectories.
 
 ---

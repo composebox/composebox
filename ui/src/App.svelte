@@ -307,12 +307,24 @@
 
   onMount(() => {
     checkAuth();
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && authState === 'app') {
+        loadStacks();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const poll = setInterval(() => {
-      if (authState === 'app') {
+      if (authState === 'app' && !document.hidden) {
         loadStacks();
       }
     }, 6000);
-    return () => clearInterval(poll);
+
+    return () => {
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   });
 </script>
 

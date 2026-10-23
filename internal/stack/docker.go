@@ -274,12 +274,6 @@ func (c *DockerClient) StreamLogs(ctx context.Context, stackPath, composeFile st
 	return cmd.Run()
 }
 
-func (c *DockerClient) runCommand(ctx context.Context, stackPath, composeFile string, args ...string) (string, error) {
-	var out bytes.Buffer
-	err := c.runCommandStream(ctx, stackPath, composeFile, &out, args...)
-	return strings.TrimSpace(out.String()), err
-}
-
 func (c *DockerClient) runCommandStream(ctx context.Context, stackPath, composeFile string, out io.Writer, args ...string) error {
 	fullComposePath := filepath.Join(stackPath, composeFile)
 	baseArgs := []string{"compose", "-f", fullComposePath}

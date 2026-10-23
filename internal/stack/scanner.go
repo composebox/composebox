@@ -195,7 +195,7 @@ func AuditComposeSecurity(composeContent string) ([]string, error) {
 				if hostPart == "" {
 					continue
 				}
-				if hostPart == "/" || hostPart == "/etc" || hostPart == "/proc" || hostPart == "/sys" || hostPart == "/root" || hostPart == "/var/run" {
+				if isCriticalHostPath(hostPart) {
 					warnings = append(warnings, fmt.Sprintf("Service '%s' mounts critical host path (%s)", svcName, hostPart))
 				}
 			}
@@ -203,6 +203,33 @@ func AuditComposeSecurity(composeContent string) ([]string, error) {
 	}
 
 	return warnings, nil
+}
+
+func isCriticalHostPath(path string) bool {
+	clean := filepath.Clean(path)
+	critical := map[string]bool{
+		"/":                     true,
+		"/etc":                  true,
+		"/proc":                 true,
+		"/sys":                  true,
+		"/root":                 true,
+		"/boot":                 true,
+		"/var/run":              true,
+		"/var/run/docker.sock":  true,
+		"/run/docker.sock":      true,
+		"/run":                  true,
+		"/etc/shadow":           true,
+		"/etc/sudoers":          true,
+	}
+	if critical[clean] {
+		return true
+	}
+	for prefix := range critical {
+		if prefix != "/" && strings.HasPrefix(clean, prefix+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func extractVolumeHostPath(v any) string {
@@ -446,6 +473,11 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 		os.Remove(tmpName)
 		return err
 	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpName)
+		return err
+	}
 	if err := tmpFile.Chmod(perm); err != nil {
 		tmpFile.Close()
 		os.Remove(tmpName)
@@ -456,5 +488,16 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 		return err
 	}
 
-	return os.Rename(tmpName, filename)
+	if err := os.Rename(tmpName, filename); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+
+	// Sync parent directory to persist the directory entry metadata
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
+
+	return nil
 }

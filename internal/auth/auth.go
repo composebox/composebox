@@ -36,6 +36,7 @@ type storedAuth struct {
 type ipRateLimit struct {
 	failedAttempts int
 	lockoutUntil   time.Time
+	lastSeen       time.Time
 }
 
 // Manager handles user authentication, session tokens, rate limiting, and middleware.
@@ -164,8 +165,18 @@ func (m *Manager) Login(password string, clientIP ...string) (string, error) {
 	}
 
 	m.mu.Lock()
+	now := time.Now()
+	// Proactively clean up expired entries if map grows large
+	if len(m.ipLimits) > 500 {
+		for k, v := range m.ipLimits {
+			if now.After(v.lockoutUntil) && now.Sub(v.lastSeen) > lockoutDuration {
+				delete(m.ipLimits, k)
+			}
+		}
+	}
+
 	if lim, ok := m.ipLimits[ip]; ok {
-		if time.Now().Before(lim.lockoutUntil) {
+		if now.Before(lim.lockoutUntil) {
 			remaining := int(time.Until(lim.lockoutUntil).Seconds()) + 1
 			m.mu.Unlock()
 			return "", fmt.Errorf("too many failed attempts from your IP, try again in %ds", remaining)
@@ -213,11 +224,11 @@ func (m *Manager) recordFailure(ip string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Prevent map from growing without bound
-	if len(m.ipLimits) > 1000 {
-		now := time.Now()
+	now := time.Now()
+	// Prevent map from growing without bound: evict entries older than lockoutDuration
+	if len(m.ipLimits) > 500 {
 		for k, v := range m.ipLimits {
-			if now.After(v.lockoutUntil) && v.failedAttempts == 0 {
+			if now.After(v.lockoutUntil) && now.Sub(v.lastSeen) > lockoutDuration {
 				delete(m.ipLimits, k)
 			}
 		}
@@ -228,9 +239,10 @@ func (m *Manager) recordFailure(ip string) {
 		lim = &ipRateLimit{}
 		m.ipLimits[ip] = lim
 	}
+	lim.lastSeen = now
 	lim.failedAttempts++
 	if lim.failedAttempts >= maxFailedAttempts {
-		lim.lockoutUntil = time.Now().Add(lockoutDuration)
+		lim.lockoutUntil = now.Add(lockoutDuration)
 		lim.failedAttempts = 0
 	}
 }
@@ -400,6 +412,11 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 		os.Remove(tmpName)
 		return err
 	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpName)
+		return err
+	}
 	if err := tmpFile.Chmod(perm); err != nil {
 		tmpFile.Close()
 		os.Remove(tmpName)
@@ -410,5 +427,16 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 		return err
 	}
 
-	return os.Rename(tmpName, filename)
+	if err := os.Rename(tmpName, filename); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+
+	// Sync parent directory to persist directory entry metadata
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
+
+	return nil
 }

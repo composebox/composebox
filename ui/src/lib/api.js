@@ -125,7 +125,7 @@ export async function triggerAction(name, action, onChunk) {
     }
   }
 
-  if (fullOutput.includes('[ERROR]')) {
+  if (fullOutput.includes('\n[ERROR] ') || fullOutput.startsWith('[ERROR] ')) {
     throw new Error(`Action '${action}' finished with error`);
   }
 

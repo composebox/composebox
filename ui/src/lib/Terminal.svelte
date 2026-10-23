@@ -8,9 +8,15 @@
   let logSource = null;
   let termEl = $state(null);
 
+  let reconnectTimer = null;
+
   function connect(targetStack) {
     if (logSource) {
       logSource.close();
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
     }
     logs = `[Connected to ${targetStack} logs]\n`;
     logSource = new EventSource(`/api/stacks/${encodeURIComponent(targetStack)}/logs`);
@@ -30,9 +36,15 @@
 
     logSource.onerror = () => {
       if (!logs.includes('Disconnected')) {
-        logs += '\n[Disconnected: No running containers producing logs. Start stack to stream logs.]\n';
+        logs += '\n[Disconnected: Stream interrupted. Retrying in 4s...]\n';
       }
       logSource.close();
+      logSource = null;
+      reconnectTimer = setTimeout(() => {
+        if (stackName === targetStack) {
+          connect(targetStack);
+        }
+      }, 4000);
     };
   }
 
@@ -46,6 +58,9 @@
   onDestroy(() => {
     if (logSource) {
       logSource.close();
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
     }
   });
 </script>
