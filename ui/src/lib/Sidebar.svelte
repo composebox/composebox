@@ -1,5 +1,6 @@
 <script>
   import { fade } from 'svelte/transition';
+  import { Search, Plus, LogOut, X } from '@lucide/svelte';
   import Logo from './Logo.svelte';
 
   let {
@@ -68,24 +69,23 @@
       <span class="text-xs">composebox</span>
     </div>
     <div class="flex items-center gap-1.5">
-      <span class="font-mono text-[10px] text-zinc-500">{version}</span>
       {#if authEnabled}
         <button
           onclick={onLogout}
-          class="rounded border border-zinc-700/80 bg-zinc-800/50 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-700 active:scale-95 transition-all duration-150"
+          title="Log out"
+          class="flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900/80 px-2 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 active:scale-95 transition-all duration-150 cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
         >
-          Logout
+          <LogOut class="h-3 w-3" />
+          <span>Logout</span>
         </button>
       {/if}
       {#if mobileOpen}
         <button
           onclick={onCloseMobile}
           aria-label="Close menu"
-          class="md:hidden rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+          class="md:hidden rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors cursor-pointer"
         >
-          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-          </svg>
+          <X class="h-3.5 w-3.5" />
         </button>
       {/if}
     </div>
@@ -94,23 +94,22 @@
   <!-- Search & New -->
   <div class="p-2.5 border-b border-zinc-800/80 flex gap-2 items-center shrink-0">
     <div class="relative flex-1">
-      <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
-      </svg>
+      <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500 pointer-events-none" />
       <input
         bind:this={searchEl}
         type="text"
         bind:value={search}
         onkeydown={handleSearchKeydown}
-        placeholder="Search stacks... (/)"
-        class="w-full rounded-md border border-zinc-800 bg-zinc-950 pl-8 pr-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none transition-colors"
+        placeholder="Search stacks..."
+        class="w-full rounded-md border border-zinc-800 bg-zinc-950 pl-8 pr-7 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:border-zinc-700 focus:outline-none transition-colors"
       />
+      <kbd class="absolute right-2 top-1/2 -translate-y-1/2 px-1 py-0.2 text-[9px] font-mono text-zinc-500 bg-zinc-900 border border-zinc-800 rounded pointer-events-none">/</kbd>
     </div>
     <button
       onclick={onOpenNewStack}
-      class="flex items-center gap-1 rounded-md border border-zinc-700/80 bg-zinc-800/50 px-2.5 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-95 transition-all duration-150 shrink-0"
+      class="flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all duration-150 shrink-0 cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
     >
-      <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <Plus class="h-3 w-3" />
       <span>New</span>
     </button>
   </div>
@@ -143,4 +142,12 @@
       </div>
     {/if}
   </div>
+
+  <!-- Footer -->
+  {#if version}
+    <div class="px-3.5 py-2.5 border-t border-zinc-800/80 flex items-center justify-between shrink-0 text-[11px] font-mono text-zinc-500 select-none">
+      <span>composebox</span>
+      <span class="whitespace-nowrap">{version}</span>
+    </div>
+  {/if}
 </aside>

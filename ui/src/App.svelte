@@ -20,6 +20,21 @@
   import ActionConsole from './lib/ActionConsole.svelte';
   import Modal from './lib/Modal.svelte';
   import Logo from './lib/Logo.svelte';
+  import { DropdownMenu } from 'bits-ui';
+  import {
+    Save,
+    Rocket,
+    Play,
+    RotateCw,
+    RefreshCw,
+    Square,
+    Trash2,
+    ChevronDown,
+    Terminal as TerminalIcon,
+    Menu,
+    Download,
+    X,
+  } from '@lucide/svelte';
 
   let authState = $state('loading'); // 'loading' | 'setup' | 'login' | 'app'
   let authEnabled = $state(true);
@@ -214,19 +229,30 @@
     consoleAction = '';
   }
 
-  async function handleSave() {
+  async function handleSave(deploy = false) {
     if (!currentStack || activeAction) return;
-    activeAction = 'save';
-    try {
-      const res = await saveStack(currentStack.name, composeContent, envContent);
-      originalCompose = composeContent;
-      originalEnv = envContent;
-      showToast(res.message || 'Configuration saved', 'success');
-      await loadStacks();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
+    if (!deploy && !hasUnsavedChanges) return;
+
+    if (hasUnsavedChanges) {
+      activeAction = 'save';
+      try {
+        const res = await saveStack(currentStack.name, composeContent, envContent);
+        originalCompose = composeContent;
+        originalEnv = envContent;
+        if (!deploy) {
+          showToast(res.message || 'Configuration saved to disk', 'success');
+          await loadStacks();
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+        activeAction = null;
+        return;
+      }
       activeAction = null;
+    }
+
+    if (deploy) {
+      await handleAction('up');
     }
   }
 
@@ -271,7 +297,11 @@
   function handleKeydown(e) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      handleSave();
+      if (e.shiftKey) {
+        handleSave(true);
+      } else if (hasUnsavedChanges) {
+        handleSave(false);
+      }
     }
   }
 
@@ -341,15 +371,13 @@
               <button
                 onclick={() => (mobileDrawerOpen = true)}
                 aria-label="Open stacks menu"
-                class="md:hidden -ml-1 rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white active:scale-95 transition-all duration-150 shrink-0"
+                class="md:hidden -ml-1 rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white active:scale-95 transition-all duration-150 shrink-0 cursor-pointer"
               >
-                <svg class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="18" x2="20" y2="18"/>
-                </svg>
+                <Menu class="h-4.5 w-4.5" />
               </button>
-              <h2 class="text-sm font-semibold text-white truncate">{currentStack.name}</h2>
+              <h2 class="text-sm font-semibold text-white tracking-tight truncate">{currentStack.name}</h2>
               <span
-                class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0 transition-colors duration-300 {currentStack.status === 'running' ? 'bg-emerald-500/10 text-emerald-400' : currentStack.status === 'partial' ? 'bg-amber-500/10 text-amber-400' : currentStack.status === 'stopped' || currentStack.status === 'exited' ? 'bg-red-500/10 text-red-400' : 'bg-zinc-800 text-zinc-400'}"
+                class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0 border transition-colors duration-300 {currentStack.status === 'running' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : currentStack.status === 'partial' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : currentStack.status === 'stopped' || currentStack.status === 'exited' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60'}"
               >
                 <span
                   class="h-1.5 w-1.5 rounded-full transition-colors duration-300 {currentStack.status === 'running' ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]' : currentStack.status === 'partial' ? 'bg-amber-400' : currentStack.status === 'stopped' || currentStack.status === 'exited' ? 'bg-red-400' : 'bg-zinc-400'}"
@@ -362,25 +390,71 @@
 
             <!-- Save & Delete quick buttons on mobile header row -->
             <div class="flex sm:hidden items-center gap-1.5 shrink-0">
-              <button
-                onclick={handleSave}
-                disabled={activeAction !== null}
-                title="Save Changes"
-                class="relative flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-500 active:scale-95 disabled:opacity-50 transition-all duration-150"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                <span>{activeAction === 'save' ? '...' : 'Save'}</span>
-                {#if hasUnsavedChanges}
-                  <span class="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-400"></span>
-                {/if}
-              </button>
+              <DropdownMenu.Root>
+                <div class="relative inline-flex items-center rounded-md border border-blue-500/50 bg-blue-600 shadow-xs">
+                  <button
+                    onclick={() => handleSave(false)}
+                    disabled={activeAction !== null || !hasUnsavedChanges}
+                    title="Save draft"
+                    class="relative inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-500 active:scale-95 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    <Save class="h-3.5 w-3.5" />
+                    <span>{activeAction === 'save' ? '...' : 'Save'}</span>
+                    {#if hasUnsavedChanges}
+                      <span class="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.8)]"></span>
+                    {/if}
+                  </button>
+                  <DropdownMenu.Trigger
+                    disabled={activeAction !== null}
+                    title="Options"
+                    class="inline-flex items-center border-l border-blue-700/80 px-1 py-1 text-xs text-white/90 hover:text-white hover:bg-blue-500 active:scale-95 disabled:opacity-40 transition-colors outline-none cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    <ChevronDown class="h-3.5 w-3.5" />
+                  </DropdownMenu.Trigger>
+                </div>
+
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    sideOffset={6}
+                    align="end"
+                    class="z-50 w-max max-w-[calc(100vw-1.5rem)] rounded-md border border-zinc-800 bg-zinc-900 p-1 shadow-xl text-xs divide-y divide-zinc-800 outline-none"
+                  >
+                    <div class="p-0.5">
+                      <DropdownMenu.Item
+                        onSelect={() => handleSave(false)}
+                        disabled={!hasUnsavedChanges}
+                        class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-left outline-none transition-colors whitespace-nowrap {!hasUnsavedChanges ? 'opacity-40 cursor-not-allowed text-zinc-500 select-none' : 'text-zinc-300 hover:text-white hover:bg-zinc-800 data-[highlighted]:bg-zinc-800 data-[highlighted]:text-white cursor-pointer'}"
+                      >
+                        <Save class="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                        <div>
+                          <div class="font-medium text-zinc-200">Save Draft</div>
+                          <div class="text-[10px] text-zinc-500 font-normal">Save to disk only</div>
+                        </div>
+                      </DropdownMenu.Item>
+                    </div>
+                    <div class="p-0.5">
+                      <DropdownMenu.Item
+                        onSelect={() => handleSave(true)}
+                        class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-left text-zinc-300 hover:text-white hover:bg-zinc-800 data-[highlighted]:bg-zinc-800 data-[highlighted]:text-white transition-colors cursor-pointer outline-none whitespace-nowrap"
+                      >
+                        <Rocket class="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                        <div>
+                          <div class="font-medium text-zinc-200">Save & Deploy</div>
+                          <div class="text-[10px] text-zinc-500 font-normal">Apply via compose up</div>
+                        </div>
+                      </DropdownMenu.Item>
+                    </div>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+
               <button
                 onclick={() => (deleteModalOpen = true)}
                 disabled={activeAction !== null}
                 title="Delete Stack"
-                class="rounded-md border border-zinc-700/80 bg-zinc-800/60 p-1.5 text-red-400 hover:bg-red-500/10 hover:border-red-500/30 active:scale-95 disabled:opacity-50 transition-all duration-150"
+                class="rounded-md border border-zinc-800 bg-zinc-900/80 p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/30 active:scale-95 disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
               >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                <Trash2 class="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
@@ -392,19 +466,19 @@
                 onclick={() => handleAction('update')}
                 disabled={activeAction !== null}
                 title="Update Stack (Pull latest images & apply changes)"
-                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'update' ? 'animate-spin' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                <RefreshCw class="h-3.5 w-3.5 shrink-0 text-emerald-400 {activeAction === 'update' ? 'animate-spin' : ''}" />
                 <span>{activeAction === 'update' ? 'Updating' : 'Update'}</span>
               </button>
               <button
                 onclick={() => handleAction('restart')}
                 disabled={activeAction !== null}
                 title="Restart Stack"
-                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'restart' ? 'animate-spin motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-                <span>{activeAction === 'restart' ? 'Restart' : 'Restart'}</span>
+                <RotateCw class="h-3.5 w-3.5 shrink-0 text-zinc-400 {activeAction === 'restart' ? 'animate-spin motion-reduce:animate-none text-amber-400' : ''}" />
+                <span>{activeAction === 'restart' ? 'Restarting' : 'Restart'}</span>
               </button>
               <button
                 onclick={() => {
@@ -416,9 +490,9 @@
                 }}
                 disabled={activeAction !== null}
                 title="Stop Stack"
-                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+                class="group flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-300 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/30 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'down' ? 'animate-pulse text-red-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
+                <Square class="h-3.5 w-3.5 shrink-0 transition-colors duration-150 {activeAction === 'down' ? 'animate-pulse text-red-400' : 'text-zinc-400 group-hover:text-red-400'}" />
                 <span>{activeAction === 'down' ? 'Stopping' : 'Stop'}</span>
               </button>
             {:else}
@@ -426,40 +500,96 @@
                 onclick={() => handleAction('up')}
                 disabled={activeAction !== null}
                 title="Start Stack"
-                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'up' ? 'animate-pulse text-emerald-400' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                <Play class="h-3.5 w-3.5 shrink-0 text-emerald-400 {activeAction === 'up' ? 'animate-pulse' : ''}" />
                 <span>{activeAction === 'up' ? 'Starting' : 'Start'}</span>
               </button>
               <button
                 onclick={() => handleAction('pull')}
                 disabled={activeAction !== null}
                 title="Pull Images"
-                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800/60 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-200 hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
               >
-                <svg class="h-3.5 w-3.5 shrink-0 {activeAction === 'pull' ? 'animate-bounce motion-reduce:animate-none' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                <Download class="h-3.5 w-3.5 shrink-0 text-zinc-400 {activeAction === 'pull' ? 'animate-bounce motion-reduce:animate-none' : ''}" />
                 <span>{activeAction === 'pull' ? 'Pulling' : 'Pull'}</span>
               </button>
             {/if}
-            <button
-              onclick={handleSave}
-              disabled={activeAction !== null}
-              title="Save Changes (Ctrl+S)"
-              class="hidden sm:flex relative items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 active:scale-[0.97] disabled:opacity-50 transition-all duration-150"
-            >
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              <span>{activeAction === 'save' ? 'Saving...' : 'Save'}</span>
-              {#if hasUnsavedChanges}
-                <span class="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-400"></span>
-              {/if}
-            </button>
+
+            <!-- Save & Deploy Split Dropdown -->
+            <DropdownMenu.Root>
+              <div class="relative hidden sm:inline-flex items-center rounded-md border border-blue-500/50 bg-blue-600 shadow-xs">
+                <button
+                  onclick={() => handleSave(false)}
+                  disabled={activeAction !== null || !hasUnsavedChanges}
+                  title="Save draft to disk (Ctrl+S)"
+                  class="relative inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-500 active:scale-[0.98] disabled:opacity-40 disabled:hover:bg-blue-600 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <Save class="h-3.5 w-3.5" />
+                  <span>{activeAction === 'save' ? 'Saving...' : 'Save'}</span>
+                  {#if hasUnsavedChanges}
+                    <span class="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.8)]"></span>
+                  {/if}
+                </button>
+
+                <DropdownMenu.Trigger
+                  disabled={activeAction !== null}
+                  title="Save & Deploy options"
+                  class="inline-flex items-center border-l border-blue-700/80 px-1.5 py-1 text-xs text-white/90 hover:text-white hover:bg-blue-500 active:scale-[0.98] disabled:opacity-40 transition-colors outline-none cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <ChevronDown class="h-3.5 w-3.5" />
+                </DropdownMenu.Trigger>
+              </div>
+
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  sideOffset={6}
+                  align="end"
+                  class="z-50 w-max max-w-[calc(100vw-2rem)] rounded-md border border-zinc-800 bg-zinc-900 p-1 shadow-xl text-xs divide-y divide-zinc-800 outline-none"
+                >
+                  <div class="p-0.5">
+                    <DropdownMenu.Item
+                      onSelect={() => handleSave(false)}
+                      disabled={!hasUnsavedChanges}
+                      class="w-full flex items-center justify-between gap-4 px-2.5 py-2 rounded text-left outline-none transition-colors whitespace-nowrap {!hasUnsavedChanges ? 'opacity-40 cursor-not-allowed text-zinc-500 select-none' : 'text-zinc-300 hover:text-white hover:bg-zinc-800 data-[highlighted]:bg-zinc-800 data-[highlighted]:text-white cursor-pointer'}"
+                    >
+                      <div class="flex items-center gap-2.5">
+                        <Save class="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                        <div>
+                          <div class="font-medium text-zinc-200">Save Draft</div>
+                          <div class="text-[10px] text-zinc-500 font-normal">Save to disk only</div>
+                        </div>
+                      </div>
+                      <kbd class="px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 bg-zinc-800 rounded border border-zinc-700/60 shadow-2xs shrink-0 ml-3">Ctrl+S</kbd>
+                    </DropdownMenu.Item>
+                  </div>
+
+                  <div class="p-0.5">
+                    <DropdownMenu.Item
+                      onSelect={() => handleSave(true)}
+                      class="w-full flex items-center justify-between gap-4 px-2.5 py-2 rounded text-left text-zinc-300 hover:text-white hover:bg-zinc-800 data-[highlighted]:bg-zinc-800 data-[highlighted]:text-white cursor-pointer outline-none transition-colors whitespace-nowrap"
+                    >
+                      <div class="flex items-center gap-2.5">
+                        <Rocket class="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                        <div>
+                          <div class="font-medium text-zinc-200">Save & Deploy</div>
+                          <div class="text-[10px] text-zinc-500 font-normal">Apply via compose up</div>
+                        </div>
+                      </div>
+                      <kbd class="px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 bg-zinc-800 rounded border border-zinc-700/60 shadow-2xs shrink-0 ml-3">Ctrl+Shift+S</kbd>
+                    </DropdownMenu.Item>
+                  </div>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+
             <button
               onclick={() => (deleteModalOpen = true)}
               disabled={activeAction !== null}
               title="Delete Stack"
-              class="hidden sm:inline-flex rounded-md border border-zinc-700/80 bg-zinc-800/60 p-1.5 text-red-400 hover:bg-red-500/10 hover:border-red-500/30 active:scale-95 disabled:opacity-50 transition-all duration-150"
+              class="hidden sm:inline-flex rounded-md border border-zinc-800 bg-zinc-900/80 p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/30 active:scale-95 disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
             >
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <Trash2 class="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
@@ -469,25 +599,25 @@
           <div class="flex gap-5 sm:gap-6">
             <button
               onclick={() => (tab = 'containers')}
-              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'containers' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 cursor-pointer {tab === 'containers' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
             >
               Containers
             </button>
             <button
               onclick={() => (tab = 'compose')}
-              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'compose' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 cursor-pointer {tab === 'compose' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
             >
               compose.yaml
             </button>
             <button
               onclick={() => (tab = 'env')}
-              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'env' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 cursor-pointer {tab === 'env' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
             >
               .env
             </button>
             <button
               onclick={() => (tab = 'logs')}
-              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 {tab === 'logs' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+              class="border-b-2 py-2.5 text-xs whitespace-nowrap transition-colors duration-150 cursor-pointer {tab === 'logs' ? 'border-blue-500 text-white font-medium' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
             >
               Logs
             </button>
@@ -495,10 +625,10 @@
 
           <button
             onclick={() => (consoleOpen = !consoleOpen)}
-            class="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors duration-150 {consoleOpen ? 'bg-zinc-800 text-white border border-zinc-700' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}"
+            class="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-all duration-150 cursor-pointer {consoleOpen ? 'bg-zinc-800 text-white border border-zinc-700/80 shadow-xs' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 border border-transparent'}"
             title="Toggle Action Console Drawer"
           >
-            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <TerminalIcon class="h-3.5 w-3.5" />
             <span>Console</span>
             {#if consoleLogs && !consoleOpen}
               <span class="h-1.5 w-1.5 rounded-full {consoleStatus === 'running' ? 'bg-amber-400 animate-pulse' : consoleStatus === 'error' ? 'bg-red-400' : 'bg-emerald-400'}"></span>

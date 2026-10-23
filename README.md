@@ -23,8 +23,8 @@ A lightweight web UI and manager for Docker Compose stacks, distributed as a sin
 - **Minimal Footprint:** Idles around ~15MB of RAM with sub-second container startup times.
 - **Integrated Security:** First-run browser password setup, bcrypt password hashing, and constant-time HMAC-SHA256 session signatures. Password manager and Bitwarden autofill compatible.
 - **Resilient Log Streaming:** Server-Sent Events (SSE) stream `docker compose logs -f` without WebSocket proxy drops.
-- **Safe File Writes:** Modifications to `compose.yaml` and `.env` are staged into a temporary file and swapped atomically (`atomicWriteFile`) to prevent partial writes.
-- **Keyboard Shortcuts:** Built-in shortcut handlers for common workflow operations (`Ctrl+S`, `/`, `Esc`).
+- **Safe File Writes & Dual Workflow:** Modifications to `compose.yaml` and `.env` are staged into a temporary file and swapped atomically (`atomicWriteFile`). Supports dual-action workflows: save draft to disk only (`Ctrl+S`), or save and immediately deploy in one step via `docker compose up` (`Ctrl+Shift+S`).
+- **Keyboard Shortcuts:** Built-in shortcut handlers for common workflow operations (`Ctrl+S`, `Ctrl+Shift+S`, `/`, `Esc`).
 
 ---
 
@@ -219,7 +219,8 @@ The web interface includes built-in keyboard navigation:
 
 | Keybinding | Action |
 |---|---|
-| `Ctrl + S` / `Cmd + S` | Save active `compose.yaml` and `.env` files |
+| `Ctrl + S` / `Cmd + S` | Save active `compose.yaml` and `.env` files to disk (Save Draft) |
+| `Ctrl + Shift + S` / `Cmd + Shift + S` | Atomically save files to disk and immediately deploy (`docker compose up`) |
 | `/` | Focus stack search filter in the sidebar |
 | `Esc` | Close open modals or clear active filters |
 
@@ -319,7 +320,7 @@ composebox/
 │   ├── config/           # Environment and CLI configuration parser
 │   ├── server/           # REST router, middleware, and SSE stream handlers
 │   └── stack/            # Directory scanner, atomic file I/O, & Docker Compose runner
-├── ui/                   # Svelte 5 + Tailwind CSS v4 frontend
+├── ui/                   # Svelte 5 runes + Tailwind CSS v4 + bits-ui frontend
 │   ├── src/              # Svelte components, reactivity runes, and API client
 │   ├── embed.go          # Go embed fs wrapper for compiled assets
 │   ├── package.json      # Frontend build dependencies
