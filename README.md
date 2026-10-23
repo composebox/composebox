@@ -23,8 +23,8 @@ A lightweight web UI and manager for Docker Compose stacks, distributed as a sin
 - **Minimal Footprint:** Idles around ~15MB of RAM with sub-second container startup times.
 - **Integrated Security:** First-run browser password setup, bcrypt password hashing, and constant-time HMAC-SHA256 session signatures. Password manager and Bitwarden autofill compatible.
 - **Resilient Log Streaming:** Server-Sent Events (SSE) stream `docker compose logs -f` without WebSocket proxy drops.
-- **Safe File Writes & Dual Workflow:** Modifications to `compose.yaml` and `.env` are staged into a temporary file and swapped atomically (`atomicWriteFile`). Supports dual-action workflows: save draft to disk only (`Ctrl+S`), or save and immediately deploy in one step via `docker compose up` (`Ctrl+Shift+S`).
-- **Keyboard Shortcuts:** Built-in shortcut handlers for common workflow operations (`Ctrl+S`, `Ctrl+Shift+S`, `/`, `Esc`).
+- **Safe File Writes & Dual Workflow:** Modifications to `compose.yaml` and `.env` are staged into a temporary file and swapped atomically (`atomicWriteFile`). Supports dual-action workflows: save draft to disk only (`Ctrl+S`), or save and immediately deploy in one step via `docker compose up` (`Ctrl+Enter`).
+- **Keyboard Shortcuts:** Built-in shortcut handlers for common workflow operations (`Ctrl+S`, `Ctrl+Enter`, `/`, `Esc`).
 
 ---
 
@@ -221,7 +221,7 @@ The web interface includes built-in keyboard navigation:
 | Keybinding | Action |
 |---|---|
 | `Ctrl + S` / `Cmd + S` | Save active `compose.yaml` and `.env` files to disk (Save Draft) |
-| `Ctrl + Shift + S` / `Cmd + Shift + S` | Atomically save files to disk and immediately deploy (`docker compose up`) |
+| `Ctrl + Enter` / `Cmd + Enter` | Atomically save files to disk and immediately deploy (`docker compose up`) |
 | `/` | Focus stack search filter in the sidebar |
 | `Esc` | Close open modals or clear active filters |
 

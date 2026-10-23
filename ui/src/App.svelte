@@ -295,12 +295,15 @@
   }
 
   function handleKeydown(e) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      if (e.shiftKey) {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
         handleSave(true);
-      } else if (hasUnsavedChanges) {
-        handleSave(false);
+      } else if (e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (hasUnsavedChanges) {
+          handleSave(false);
+        }
       }
     }
   }
@@ -588,7 +591,7 @@
                           <div class="text-[10px] text-zinc-500 font-normal">Apply via compose up</div>
                         </div>
                       </div>
-                      <kbd class="px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 bg-zinc-800 rounded border border-zinc-700/60 shadow-2xs shrink-0 ml-3">Ctrl+Shift+S</kbd>
+                      <kbd class="px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 bg-zinc-800 rounded border border-zinc-700/60 shadow-2xs shrink-0 ml-3">Ctrl+Enter</kbd>
                     </DropdownMenu.Item>
                   </div>
                 </DropdownMenu.Content>
