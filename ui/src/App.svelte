@@ -10,7 +10,6 @@
     createStack,
     deleteStack,
     triggerAction,
-    getPorts,
     logout as apiLogout,
   } from './lib/api.js';
   import Login from './lib/Login.svelte';
@@ -37,7 +36,6 @@
     Menu,
     Download,
     X,
-    AlertTriangle,
   } from '@lucide/svelte';
 
   let authState = $state('loading'); // 'loading' | 'setup' | 'login' | 'app'
@@ -100,38 +98,6 @@
 
   let diskModalOpen = $state(false);
   let portsModalOpen = $state(false);
-  let allPortAllocations = $state([]);
-
-  async function loadPorts() {
-    try {
-      const res = await getPorts();
-      allPortAllocations = res.allocations || [];
-    } catch (err) {
-      console.error('Failed to load ports:', err);
-    }
-  }
-
-  let portConflict = $derived.by(() => {
-    if (!currentStack || !composeContent || allPortAllocations.length === 0) return null;
-    const regex = /(?:(?:[\d\.]+:)?(\d+):(?:\d+)|\bpublished:\s*(\d+))/g;
-    let match;
-    while ((match = regex.exec(composeContent)) !== null) {
-      const pStr = match[1] || match[2];
-      const p = parseInt(pStr, 10);
-      if (!p || p <= 0 || p > 65535) continue;
-      const conflict = allPortAllocations.find(
-        (a) => a.port === p && a.stack !== currentStack.name
-      );
-      if (conflict) {
-        return {
-          port: p,
-          otherStack: conflict.stack,
-          otherService: conflict.service,
-        };
-      }
-    }
-    return null;
-  });
 
   function showToast(message, type = '') {
     if (toastTimer) clearTimeout(toastTimer);
@@ -176,7 +142,6 @@
     try {
       const list = await getStacks();
       stacks = list || [];
-      loadPorts();
       if (currentStack) {
         const updated = stacks.find((s) => s.name === currentStack.name);
         if (updated) {
@@ -766,17 +731,6 @@
             {#if tab === 'containers'}
               <ContainersTable containers={currentStack.containers || []} />
             {:else if tab === 'compose'}
-              {#if portConflict}
-                <div class="mx-3.5 sm:mx-5 mt-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-300 shrink-0">
-                  <AlertTriangle class="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
-                  <div class="flex-1 leading-relaxed">
-                    <span class="font-semibold text-amber-200">Port Conflict Detected:</span>
-                    Port <span class="font-mono font-bold text-white bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">{portConflict.port}</span> is already mapped by stack
-                    <span class="font-semibold text-white">'{portConflict.otherStack}'</span> (service <span class="font-mono text-amber-200">'{portConflict.otherService}'</span>).
-                    Deploying this stack will fail with <code class="font-mono text-[11px] bg-zinc-900 px-1 py-0.5 rounded border border-zinc-800">address already in use</code>.
-                  </div>
-                </div>
-              {/if}
               <Editor bind:value={composeContent} placeholder="services:\n  app:\n    image: nginx\n" />
             {:else if tab === 'env'}
               <Editor bind:value={envContent} placeholder="# KEY=VALUE" />
