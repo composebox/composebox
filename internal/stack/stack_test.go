@@ -234,3 +234,84 @@ func TestDeleteStackSafety(t *testing.T) {
 		t.Fatalf("expected stack to be moved into .trash archive, got err: %v, entries: %d", err, len(trashEntries))
 	}
 }
+
+func TestExtractPortsFromCompose(t *testing.T) {
+	yamlContent := `
+services:
+  web:
+    image: nginx
+    ports:
+      - "127.0.0.1:8080:80"
+      - "3000:3000"
+      - "53:53/udp"
+  api:
+    image: my-api
+    ports:
+      - target: 8085
+        published: 8085
+        protocol: tcp
+        host_ip: 127.0.0.1
+  worker:
+    image: worker
+    ports:
+      - "9000-9002:9000-9002"
+`
+	allocs, err := ExtractPortsFromCompose([]byte(yamlContent), "test-stack")
+	if err != nil {
+		t.Fatalf("ExtractPortsFromCompose failed: %v", err)
+	}
+
+	expectedPorts := map[int]string{
+		8080: "web",
+		3000: "web",
+		53:   "web",
+		8085: "api",
+		9000: "worker",
+		9001: "worker",
+		9002: "worker",
+	}
+
+	foundPorts := make(map[int]string)
+	for _, a := range allocs {
+		foundPorts[a.Port] = a.Service
+		if a.Port == 53 && a.Protocol != "udp" {
+			t.Errorf("expected port 53 to have protocol 'udp', got %s", a.Protocol)
+		}
+		if a.Port == 8080 && a.HostIP != "127.0.0.1" {
+			t.Errorf("expected port 8080 to have host_ip '127.0.0.1', got %s", a.HostIP)
+		}
+	}
+
+	for p, svc := range expectedPorts {
+		if foundSvc, ok := foundPorts[p]; !ok || foundSvc != svc {
+			t.Errorf("expected port %d for service %s, found service %s", p, svc, foundSvc)
+		}
+	}
+}
+
+func TestDockerDiskUsageHelpers(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"9.701GB (41%)", 9701000000},
+		{"180.7MB", 180700000},
+		{"68.55kB", 68550},
+		{"0B (0%)", 0},
+		{"", 0},
+	}
+
+	for _, tt := range tests {
+		got := parseDockerSize(tt.input)
+		// Allow small rounding tolerance for float multiplier
+		diff := got - tt.expected
+		if diff < -1000 || diff > 1000 {
+			t.Errorf("parseDockerSize(%q) = %d, want %d", tt.input, got, tt.expected)
+		}
+	}
+
+	formatted := formatDockerSize(9701000000)
+	if formatted != "9.70 GB" {
+		t.Errorf("formatDockerSize(9701000000) = %s, want '9.70 GB'", formatted)
+	}
+}

@@ -76,7 +76,7 @@ func main() {
 
 	scan := stack.NewScanner(cfg.StacksDir)
 	doc := stack.NewDockerClient()
-	srv := server.New(scan, doc, authMgr, Version, cfg.TrustedProxies)
+	srv := server.New(scan, doc, authMgr, Version, GitCommit, cfg.TrustedProxies)
 
 	addr := net.JoinHostPort(cfg.Host, cfg.Port)
 	httpServer := &http.Server{

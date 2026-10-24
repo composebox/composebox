@@ -10,6 +10,7 @@
     createStack,
     deleteStack,
     triggerAction,
+    getPorts,
     logout as apiLogout,
   } from './lib/api.js';
   import Login from './lib/Login.svelte';
@@ -20,6 +21,8 @@
   import ActionConsole from './lib/ActionConsole.svelte';
   import Modal from './lib/Modal.svelte';
   import Logo from './lib/Logo.svelte';
+  import DiskModal from './lib/DiskModal.svelte';
+  import PortsModal from './lib/PortsModal.svelte';
   import { DropdownMenu } from 'bits-ui';
   import {
     Save,
@@ -34,11 +37,13 @@
     Menu,
     Download,
     X,
+    AlertTriangle,
   } from '@lucide/svelte';
 
   let authState = $state('loading'); // 'loading' | 'setup' | 'login' | 'app'
   let authEnabled = $state(true);
   let version = $state('');
+  let commit = $state('');
   let stacks = $state([]);
   let currentStack = $state(null);
   let tab = $state('containers'); // 'containers' | 'compose' | 'env' | 'logs'
@@ -59,7 +64,17 @@
   let newStackName = $state('');
   let deleteModalOpen = $state(false);
   let stopModalOpen = $state(false);
+  let stopModalAction = $state('stop');
   let copiedRecovery = $state(false);
+
+  function triggerStopOrDown(action = 'stop') {
+    if (currentStack?.name?.toLowerCase() === 'composebox') {
+      stopModalAction = action;
+      stopModalOpen = true;
+    } else {
+      handleAction(action);
+    }
+  }
 
   function copyRecoveryCommand() {
     const cmd = `cd ${currentStack?.path || '/home/ubuntu/services/composebox'} && docker compose up -d`;
@@ -83,6 +98,41 @@
       (currentStack.status === 'running' || currentStack.status === 'partial')
   );
 
+  let diskModalOpen = $state(false);
+  let portsModalOpen = $state(false);
+  let allPortAllocations = $state([]);
+
+  async function loadPorts() {
+    try {
+      const res = await getPorts();
+      allPortAllocations = res.allocations || [];
+    } catch (err) {
+      console.error('Failed to load ports:', err);
+    }
+  }
+
+  let portConflict = $derived.by(() => {
+    if (!currentStack || !composeContent || allPortAllocations.length === 0) return null;
+    const regex = /(?:(?:[\d\.]+:)?(\d+):(?:\d+)|\bpublished:\s*(\d+))/g;
+    let match;
+    while ((match = regex.exec(composeContent)) !== null) {
+      const pStr = match[1] || match[2];
+      const p = parseInt(pStr, 10);
+      if (!p || p <= 0 || p > 65535) continue;
+      const conflict = allPortAllocations.find(
+        (a) => a.port === p && a.stack !== currentStack.name
+      );
+      if (conflict) {
+        return {
+          port: p,
+          otherStack: conflict.stack,
+          otherService: conflict.service,
+        };
+      }
+    }
+    return null;
+  });
+
   function showToast(message, type = '') {
     if (toastTimer) clearTimeout(toastTimer);
     toast = { visible: true, message, type };
@@ -96,6 +146,9 @@
       const status = await getAuthStatus();
       if (status.version) {
         version = status.version;
+      }
+      if (status.commit) {
+        commit = status.commit;
       }
       authEnabled = Boolean(status.auth_enabled);
       if (!status.auth_enabled) {
@@ -123,6 +176,7 @@
     try {
       const list = await getStacks();
       stacks = list || [];
+      loadPorts();
       if (currentStack) {
         const updated = stacks.find((s) => s.name === currentStack.name);
         if (updated) {
@@ -348,12 +402,15 @@
       {stacks}
       {currentStack}
       {version}
+      {commit}
       {authEnabled}
       mobileOpen={mobileDrawerOpen}
       onSelectStack={(name) => selectStack(name)}
       onOpenNewStack={() => { newStackName = ''; newStackModalOpen = true; }}
       onCloseMobile={() => (mobileDrawerOpen = false)}
       onLogout={handleLogout}
+      onOpenDiskModal={() => (diskModalOpen = true)}
+      onOpenPortsModal={() => (portsModalOpen = true)}
     />
 
     <!-- Main Workspace -->
@@ -378,9 +435,9 @@
           <p class="text-xs">Select a stack to view containers and edit files</p>
         </div>
       {:else}
-        <!-- Action bar (responsive 2-row on mobile, 1-row on desktop) -->
+        <!-- Action bar (responsive 2-row on mobile, 1-row on tablet and desktop) -->
         <div class="px-3.5 sm:px-5 py-2.5 sm:py-0 sm:h-13 border-b border-zinc-800/80 bg-zinc-900/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 shrink-0">
-          <!-- Top row on mobile: Menu button + Stack Name + Status + Mobile Save/Delete -->
+          <!-- Top row on mobile: Menu button + Stack Name + Status + Quick Save/Delete -->
           <div class="flex items-center justify-between gap-2 min-w-0">
             <div class="flex items-center gap-2.5 min-w-0">
               <button
@@ -481,7 +538,7 @@
                 onclick={() => handleAction('update')}
                 disabled={activeAction !== null}
                 title="Update Stack (Pull latest images & apply changes)"
-                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
               >
                 <RefreshCw class="h-3.5 w-3.5 shrink-0 text-emerald-400 {activeAction === 'update' ? 'animate-spin' : ''}" />
                 <span>{activeAction === 'update' ? 'Updating' : 'Update'}</span>
@@ -490,32 +547,73 @@
                 onclick={() => handleAction('restart')}
                 disabled={activeAction !== null}
                 title="Restart Stack"
-                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
               >
                 <RotateCw class="h-3.5 w-3.5 shrink-0 text-zinc-400 {activeAction === 'restart' ? 'animate-spin motion-reduce:animate-none text-amber-400' : ''}" />
                 <span>{activeAction === 'restart' ? 'Restarting' : 'Restart'}</span>
               </button>
-              <button
-                onclick={() => {
-                  if (currentStack?.name?.toLowerCase() === 'composebox') {
-                    stopModalOpen = true;
-                  } else {
-                    handleAction('down');
-                  }
-                }}
-                disabled={activeAction !== null}
-                title="Stop Stack"
-                class="group flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-300 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/30 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
-              >
-                <Square class="h-3.5 w-3.5 shrink-0 transition-colors duration-150 {activeAction === 'down' ? 'animate-pulse text-red-400' : 'text-zinc-400 group-hover:text-red-400'}" />
-                <span>{activeAction === 'down' ? 'Stopping' : 'Stop'}</span>
-              </button>
+              <!-- Stop / Down Split Dropdown -->
+              <DropdownMenu.Root>
+                <div class="flex sm:inline-flex items-center rounded-md border border-zinc-800 bg-zinc-900/80 shadow-xs">
+                  <button
+                    onclick={() => triggerStopOrDown('stop')}
+                    disabled={activeAction !== null}
+                    title="Stop Stack (docker compose stop - preserves containers in exited state)"
+                    class="flex-1 sm:flex-initial group flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-300 hover:text-red-400 hover:bg-red-500/10 active:scale-[0.97] disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    <Square class="h-3.5 w-3.5 shrink-0 transition-colors {activeAction === 'stop' ? 'animate-pulse text-red-400' : 'text-zinc-400 group-hover:text-red-400'}" />
+                    <span>{activeAction === 'stop' ? 'Stopping' : 'Stop'}</span>
+                  </button>
+
+                  <DropdownMenu.Trigger
+                    disabled={activeAction !== null}
+                    title="More stop options"
+                    class="inline-flex items-center border-l border-zinc-800 px-1 py-1.5 sm:py-1 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50 transition-colors outline-none cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    <ChevronDown class="h-3.5 w-3.5" />
+                  </DropdownMenu.Trigger>
+                </div>
+
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    sideOffset={6}
+                    align="end"
+                    class="z-50 w-max max-w-[calc(100vw-2rem)] rounded-md border border-zinc-800 bg-zinc-900 p-1 shadow-xl text-xs divide-y divide-zinc-800 outline-none"
+                  >
+                    <div class="p-0.5">
+                      <DropdownMenu.Item
+                        onSelect={() => triggerStopOrDown('stop')}
+                        class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-left text-zinc-300 hover:text-white hover:bg-zinc-800 data-[highlighted]:bg-zinc-800 data-[highlighted]:text-white cursor-pointer outline-none transition-colors whitespace-nowrap"
+                      >
+                        <Square class="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                        <div>
+                          <div class="font-medium text-zinc-200">Stop (Preserve Containers)</div>
+                          <div class="text-[10px] text-zinc-500 font-normal">Halts processes; leaves containers in Exited state</div>
+                        </div>
+                      </DropdownMenu.Item>
+                    </div>
+
+                    <div class="p-0.5">
+                      <DropdownMenu.Item
+                        onSelect={() => triggerStopOrDown('down')}
+                        class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded text-left text-red-300 hover:text-red-200 hover:bg-red-500/10 data-[highlighted]:bg-red-500/10 data-[highlighted]:text-red-200 cursor-pointer outline-none transition-colors whitespace-nowrap"
+                      >
+                        <Trash2 class="h-3.5 w-3.5 text-red-400 shrink-0" />
+                        <div>
+                          <div class="font-medium text-red-300">Down / Tear Down Stack</div>
+                          <div class="text-[10px] text-zinc-500 font-normal">Destroys containers and virtual networks</div>
+                        </div>
+                      </DropdownMenu.Item>
+                    </div>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
             {:else}
               <button
                 onclick={() => handleAction('up')}
                 disabled={activeAction !== null}
                 title="Start Stack"
-                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 sm:py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 active:scale-[0.97] disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
               >
                 <Play class="h-3.5 w-3.5 shrink-0 text-emerald-400 {activeAction === 'up' ? 'animate-pulse' : ''}" />
                 <span>{activeAction === 'up' ? 'Starting' : 'Start'}</span>
@@ -524,11 +622,22 @@
                 onclick={() => handleAction('pull')}
                 disabled={activeAction !== null}
                 title="Pull Images"
-                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-all duration-150 cursor-pointer disabled:cursor-not-allowed"
+                class="flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-700 active:scale-[0.97] disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
               >
                 <Download class="h-3.5 w-3.5 shrink-0 text-zinc-400 {activeAction === 'pull' ? 'animate-bounce motion-reduce:animate-none' : ''}" />
                 <span>{activeAction === 'pull' ? 'Pulling' : 'Pull'}</span>
               </button>
+              {#if currentStack?.status === 'exited' || (currentStack?.containers && currentStack.containers.some(c => c.state?.toLowerCase() === 'exited'))}
+                <button
+                  onclick={() => triggerStopOrDown('down')}
+                  disabled={activeAction !== null}
+                  title="Tear Down Stack (Removes stopped containers and networks)"
+                  class="group flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 sm:py-1 text-xs text-zinc-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/30 active:scale-[0.97] disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <Trash2 class="h-3.5 w-3.5 shrink-0 transition-colors {activeAction === 'down' ? 'animate-pulse text-red-400' : 'text-zinc-500 group-hover:text-red-400'}" />
+                  <span>{activeAction === 'down' ? 'Tearing Down' : 'Down'}</span>
+                </button>
+              {/if}
             {/if}
 
             <!-- Save & Deploy Split Dropdown -->
@@ -657,6 +766,17 @@
             {#if tab === 'containers'}
               <ContainersTable containers={currentStack.containers || []} />
             {:else if tab === 'compose'}
+              {#if portConflict}
+                <div class="mx-3.5 sm:mx-5 mt-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-300 shrink-0">
+                  <AlertTriangle class="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+                  <div class="flex-1 leading-relaxed">
+                    <span class="font-semibold text-amber-200">Port Conflict Detected:</span>
+                    Port <span class="font-mono font-bold text-white bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">{portConflict.port}</span> is already mapped by stack
+                    <span class="font-semibold text-white">'{portConflict.otherStack}'</span> (service <span class="font-mono text-amber-200">'{portConflict.otherService}'</span>).
+                    Deploying this stack will fail with <code class="font-mono text-[11px] bg-zinc-900 px-1 py-0.5 rounded border border-zinc-800">address already in use</code>.
+                  </div>
+                </div>
+              {/if}
               <Editor bind:value={composeContent} placeholder="services:\n  app:\n    image: nginx\n" />
             {:else if tab === 'env'}
               <Editor bind:value={envContent} placeholder="# KEY=VALUE" />
@@ -793,17 +913,31 @@
         <button
           type="button"
           onclick={() => {
+            const act = stopModalAction;
             stopModalOpen = false;
-            handleAction('down');
+            handleAction(act);
           }}
           class="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-600/90 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-red-600 active:scale-95 shadow-sm transition-all duration-150"
         >
-          <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>
-          <span>Stop Anyway</span>
+          <Square class="h-3.5 w-3.5 shrink-0" />
+          <span>{stopModalAction === 'down' ? 'Down Anyway' : 'Stop Anyway'}</span>
         </button>
       </div>
     </div>
   </Modal>
+
+  <!-- Disk Hygiene Modal -->
+  <DiskModal
+    isOpen={diskModalOpen}
+    onClose={() => (diskModalOpen = false)}
+  />
+
+  <!-- Port Allocation Matrix Modal -->
+  <PortsModal
+    isOpen={portsModalOpen}
+    onClose={() => (portsModalOpen = false)}
+    onSelectStack={(name) => selectStack(name)}
+  />
 
   <!-- Toast -->
   {#if toast.visible}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -500,4 +501,216 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 	}
 
 	return nil
+}
+
+// PortAllocation represents a declared or bound host port mapping.
+type PortAllocation struct {
+	Port          int    `json:"port"`
+	HostIP        string `json:"host_ip"`
+	ContainerPort int    `json:"container_port"`
+	Protocol      string `json:"protocol"`
+	Stack         string `json:"stack"`
+	Service       string `json:"service"`
+}
+
+// GetPortAllocations scans all stacks and aggregates all declared port allocations.
+func (s *Scanner) GetPortAllocations() ([]PortAllocation, error) {
+	stacks, err := s.Discover()
+	if err != nil {
+		return nil, err
+	}
+
+	allAllocations := make([]PortAllocation, 0)
+
+	for _, st := range stacks {
+		composePath := filepath.Join(st.Path, st.ComposeFile)
+		content, err := os.ReadFile(composePath)
+		if err != nil {
+			continue
+		}
+
+		allocs, err := ExtractPortsFromCompose(content, st.Name)
+		if err != nil {
+			continue
+		}
+		allAllocations = append(allAllocations, allocs...)
+	}
+
+	sort.Slice(allAllocations, func(i, j int) bool {
+		if allAllocations[i].Port != allAllocations[j].Port {
+			return allAllocations[i].Port < allAllocations[j].Port
+		}
+		return allAllocations[i].Stack < allAllocations[j].Stack
+	})
+
+	return allAllocations, nil
+}
+
+// ExtractPortsFromCompose parses a compose file content and extracts all host port allocations.
+func ExtractPortsFromCompose(content []byte, stackName string) ([]PortAllocation, error) {
+	var data struct {
+		Services map[string]ServiceConfig `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(content, &data); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	allocations := make([]PortAllocation, 0)
+
+	for svcName, svc := range data.Services {
+		for _, item := range svc.Ports {
+			allocs := parsePortEntry(item, stackName, svcName)
+			allocations = append(allocations, allocs...)
+		}
+	}
+
+	sort.Slice(allocations, func(i, j int) bool {
+		return allocations[i].Port < allocations[j].Port
+	})
+
+	return allocations, nil
+}
+
+func parsePortEntry(item any, stackName, svcName string) []PortAllocation {
+	var allocs []PortAllocation
+
+	switch val := item.(type) {
+	case string:
+		str := strings.TrimSpace(val)
+		if str == "" {
+			return nil
+		}
+
+		proto := "tcp"
+		if idx := strings.LastIndex(str, "/"); idx != -1 {
+			proto = strings.ToLower(str[idx+1:])
+			str = str[:idx]
+		}
+
+		parts := strings.Split(str, ":")
+		var hostIP string
+		var hostPortStr, containerPortStr string
+
+		switch len(parts) {
+		case 3:
+			hostIP = parts[0]
+			hostPortStr = parts[1]
+			containerPortStr = parts[2]
+		case 2:
+			hostIP = "0.0.0.0"
+			hostPortStr = parts[0]
+			containerPortStr = parts[1]
+		default:
+			// "80" (container only)
+			return nil
+		}
+
+		hostPorts := parsePortRange(hostPortStr)
+		containerPorts := parsePortRange(containerPortStr)
+
+		if len(hostPorts) == 0 {
+			return nil
+		}
+
+		for i, hp := range hostPorts {
+			cp := hp
+			if i < len(containerPorts) {
+				cp = containerPorts[i]
+			} else if len(containerPorts) > 0 {
+				cp = containerPorts[0]
+			}
+			allocs = append(allocs, PortAllocation{
+				Port:          hp,
+				HostIP:        hostIP,
+				ContainerPort: cp,
+				Protocol:      proto,
+				Stack:         stackName,
+				Service:       svcName,
+			})
+		}
+
+	case map[string]any:
+		allocs = append(allocs, parseLongPortMap(val, stackName, svcName)...)
+	case map[any]any:
+		m := make(map[string]any)
+		for k, v := range val {
+			m[fmt.Sprint(k)] = v
+		}
+		allocs = append(allocs, parseLongPortMap(m, stackName, svcName)...)
+	}
+
+	return allocs
+}
+
+func parsePortRange(s string) []int {
+	s = strings.TrimSpace(s)
+	if strings.Contains(s, "-") {
+		parts := strings.SplitN(s, "-", 2)
+		start, err1 := strconv.Atoi(parts[0])
+		end, err2 := strconv.Atoi(parts[1])
+		if err1 == nil && err2 == nil && start <= end && end-start <= 100 {
+			var res []int
+			for p := start; p <= end; p++ {
+				res = append(res, p)
+			}
+			return res
+		}
+	}
+	if p, err := strconv.Atoi(s); err == nil && p > 0 {
+		return []int{p}
+	}
+	return nil
+}
+
+func parseLongPortMap(m map[string]any, stackName, svcName string) []PortAllocation {
+	publishedVal, ok := m["published"]
+	if !ok || publishedVal == nil {
+		return nil
+	}
+
+	targetVal, _ := m["target"]
+	targetPort := 0
+	switch t := targetVal.(type) {
+	case int:
+		targetPort = t
+	case string:
+		targetPort, _ = strconv.Atoi(t)
+	}
+
+	proto := "tcp"
+	if p, ok := m["protocol"].(string); ok && p != "" {
+		proto = strings.ToLower(p)
+	}
+
+	hostIP := "0.0.0.0"
+	if ip, ok := m["host_ip"].(string); ok && ip != "" {
+		hostIP = ip
+	}
+
+	var hostPorts []int
+	switch pub := publishedVal.(type) {
+	case int:
+		if pub > 0 {
+			hostPorts = []int{pub}
+		}
+	case string:
+		hostPorts = parsePortRange(pub)
+	}
+
+	var res []PortAllocation
+	for _, hp := range hostPorts {
+		cp := targetPort
+		if cp == 0 {
+			cp = hp
+		}
+		res = append(res, PortAllocation{
+			Port:          hp,
+			HostIP:        hostIP,
+			ContainerPort: cp,
+			Protocol:      proto,
+			Stack:         stackName,
+			Service:       svcName,
+		})
+	}
+	return res
 }

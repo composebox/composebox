@@ -1,18 +1,21 @@
 <script>
   import { fade } from 'svelte/transition';
-  import { Search, Plus, LogOut, X } from '@lucide/svelte';
+  import { Search, Plus, LogOut, X, HardDrive, Network } from '@lucide/svelte';
   import Logo from './Logo.svelte';
 
   let {
     stacks = [],
     currentStack = null,
     version = '',
+    commit = '',
     authEnabled = true,
     mobileOpen = false,
     onSelectStack,
     onOpenNewStack,
     onCloseMobile,
     onLogout,
+    onOpenDiskModal,
+    onOpenPortsModal,
   } = $props();
 
   let search = $state('');
@@ -143,11 +146,41 @@
     {/if}
   </div>
 
+  <!-- System Utilities -->
+  <div class="px-2 py-2 border-t border-zinc-800/80 space-y-0.5 shrink-0">
+    <div class="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+      System
+    </div>
+    <button
+      onclick={onOpenDiskModal}
+      class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 transition-colors cursor-pointer"
+    >
+      <div class="flex items-center gap-2">
+        <HardDrive class="h-3.5 w-3.5 text-blue-400" />
+        <span>Disk Hygiene</span>
+      </div>
+    </button>
+    <button
+      onclick={onOpenPortsModal}
+      class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 transition-colors cursor-pointer"
+    >
+      <div class="flex items-center gap-2">
+        <Network class="h-3.5 w-3.5 text-indigo-400" />
+        <span>Port Matrix</span>
+      </div>
+    </button>
+  </div>
+
   <!-- Footer -->
   {#if version}
     <div class="px-3.5 py-2.5 border-t border-zinc-800/80 flex items-center justify-between shrink-0 text-[11px] font-mono text-zinc-500 select-none">
       <span>composebox</span>
-      <span class="whitespace-nowrap">{version}</span>
+      <div class="flex items-center gap-1.5 whitespace-nowrap">
+        <span>{version}</span>
+        {#if commit && commit !== 'none'}
+          <span class="text-zinc-600 text-[10px]" title="Git commit {commit}">({commit})</span>
+        {/if}
+      </div>
     </div>
   {/if}
 </aside>

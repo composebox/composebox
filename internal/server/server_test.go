@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/composebox/composebox/internal/auth"
@@ -25,7 +26,7 @@ func setupTestServer(t *testing.T) (*Server, string, func()) {
 
 	scan := stack.NewScanner(tmpDir)
 	doc := stack.NewDockerClient()
-	srv := New(scan, doc, authMgr, "0.1.0")
+	srv := New(scan, doc, authMgr, "0.1.0", "testcommit")
 
 	cleanup := func() {
 		_ = os.RemoveAll(tmpDir)
@@ -257,5 +258,70 @@ func TestGetClientIP_TrustedProxies(t *testing.T) {
 	ipTrustedXFF := srv.getClientIP(reqTrustedXFF)
 	if ipTrustedXFF != "198.51.100.88" {
 		t.Errorf("expected trusted X-Forwarded-For 198.51.100.88, got %s", ipTrustedXFF)
+	}
+}
+
+func TestSystemEndpoints(t *testing.T) {
+	srv, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Create a test stack with ports
+	composeYaml := "services:\n  app:\n    image: nginx\n    ports:\n      - \"127.0.0.1:9099:80\"\n"
+	if err := srv.scanner.CreateStack("port-test", composeYaml, ""); err != nil {
+		t.Fatalf("failed to create stack: %v", err)
+	}
+
+	// 1. Authenticate session
+	token, _ := srv.authManager.Setup("adminpassword")
+	cookie := &http.Cookie{Name: "composebox_session", Value: token}
+
+	// 2. Query /api/system/ports
+	portsReq := httptest.NewRequest("GET", "/api/system/ports", nil)
+	portsReq.AddCookie(cookie)
+	portsRec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(portsRec, portsReq)
+
+	if portsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from /api/system/ports, got %d: %s", portsRec.Code, portsRec.Body.String())
+	}
+
+	var portsResp struct {
+		Allocations []stack.PortAllocation `json:"allocations"`
+	}
+	if err := json.Unmarshal(portsRec.Body.Bytes(), &portsResp); err != nil {
+		t.Fatalf("failed to unmarshal ports response: %v", err)
+	}
+
+	found := false
+	for _, a := range portsResp.Allocations {
+		if a.Port == 9099 && a.Stack == "port-test" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected to find port 9099 for stack 'port-test'")
+	}
+
+	// 3. Test POST /api/system/prune-item invalid requests
+	badItemReq := httptest.NewRequest("POST", "/api/system/prune-item", strings.NewReader(`{"type":"invalid","id":"123"}`))
+	badItemReq.AddCookie(cookie)
+	badItemReq.Header.Set("Content-Type", "application/json")
+	badItemReq.Header.Set("X-Composebox-Client", "true")
+	badItemRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(badItemRec, badItemReq)
+	if badItemRec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid item type, got %d", badItemRec.Code)
+	}
+
+	// 4. Test POST /api/stacks/port-test/stop endpoint registration
+	stopReq := httptest.NewRequest("POST", "/api/stacks/port-test/stop", nil)
+	stopReq.AddCookie(cookie)
+	stopReq.Header.Set("X-Composebox-Client", "true")
+	stopRec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(stopRec, stopReq)
+	// Stop endpoint is routed and responds (either 200 or 500 depending on docker availability in test env)
+	if stopRec.Code != http.StatusOK && stopRec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 200 or 500 from stop handler, got %d: %s", stopRec.Code, stopRec.Body.String())
 	}
 }

@@ -27,14 +27,18 @@ type Server struct {
 	authManager    *auth.Manager
 	mux            *http.ServeMux
 	version        string
+	commit         string
 	trustedProxies []*net.IPNet
 	trustedIPs     []net.IP
 }
 
 // New creates a new HTTP server.
-func New(s *stack.Scanner, d *stack.DockerClient, a *auth.Manager, version string, trustedProxiesStr ...string) *Server {
+func New(s *stack.Scanner, d *stack.DockerClient, a *auth.Manager, version, commit string, trustedProxiesStr ...string) *Server {
 	if version == "" {
 		version = "dev"
+	}
+	if commit == "" {
+		commit = "none"
 	}
 	srv := &Server{
 		scanner:      s,
@@ -42,6 +46,7 @@ func New(s *stack.Scanner, d *stack.DockerClient, a *auth.Manager, version strin
 		authManager:  a,
 		mux:          http.NewServeMux(),
 		version:      version,
+		commit:       commit,
 	}
 
 	var proxyList string
@@ -112,18 +117,29 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/stacks/{name}/save", s.authManager.Middleware(http.HandlerFunc(s.handleSaveStack)))
 	s.mux.Handle("DELETE /api/stacks/{name}", s.authManager.Middleware(http.HandlerFunc(s.handleDeleteStack)))
 	s.mux.Handle("POST /api/stacks/{name}/up", s.authManager.Middleware(s.handleStackAction("up")))
+	s.mux.Handle("POST /api/stacks/{name}/stop", s.authManager.Middleware(s.handleStackAction("stop")))
 	s.mux.Handle("POST /api/stacks/{name}/down", s.authManager.Middleware(s.handleStackAction("down")))
 	s.mux.Handle("POST /api/stacks/{name}/restart", s.authManager.Middleware(s.handleStackAction("restart")))
 	s.mux.Handle("POST /api/stacks/{name}/pull", s.authManager.Middleware(s.handleStackAction("pull")))
 	s.mux.Handle("POST /api/stacks/{name}/update", s.authManager.Middleware(s.handleStackAction("update")))
 	s.mux.Handle("GET /api/stacks/{name}/logs", s.authManager.Middleware(http.HandlerFunc(s.handleStreamLogs)))
 
+	// System health & diagnostics routes
+	s.mux.Handle("GET /api/system/df", s.authManager.Middleware(http.HandlerFunc(s.handleSystemDiskUsage)))
+	s.mux.Handle("POST /api/system/prune", s.authManager.Middleware(http.HandlerFunc(s.handleSystemPrune)))
+	s.mux.Handle("POST /api/system/prune-item", s.authManager.Middleware(http.HandlerFunc(s.handleSystemPruneItem)))
+	s.mux.Handle("GET /api/system/ports", s.authManager.Middleware(http.HandlerFunc(s.handleSystemPorts)))
+
 	// Co-located embedded Svelte SPA
 	s.mux.Handle("/", ui.Handler())
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": s.version})
+	respondJSON(w, http.StatusOK, map[string]string{
+		"status":  "ok",
+		"version": s.version,
+		"commit":  s.commit,
+	})
 }
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +154,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		"setup_required": s.authManager.IsSetupRequired(),
 		"authenticated":  authenticated,
 		"version":        s.version,
+		"commit":         s.commit,
 	})
 }
 
@@ -384,6 +401,8 @@ func (s *Server) handleStackAction(action string) http.HandlerFunc {
 			switch action {
 			case "up":
 				output, actionErr = s.dockerClient.Up(opCtx, details.Path, details.ComposeFile)
+			case "stop":
+				output, actionErr = s.dockerClient.Stop(opCtx, details.Path, details.ComposeFile)
 			case "down":
 				output, actionErr = s.dockerClient.Down(opCtx, details.Path, details.ComposeFile)
 			case "restart":
@@ -430,6 +449,8 @@ func (s *Server) handleStackAction(action string) http.HandlerFunc {
 		switch action {
 		case "up":
 			actionErr = s.dockerClient.UpStream(opCtx, details.Path, details.ComposeFile, fw)
+		case "stop":
+			actionErr = s.dockerClient.StopStream(opCtx, details.Path, details.ComposeFile, fw)
 		case "down":
 			actionErr = s.dockerClient.DownStream(opCtx, details.Path, details.ComposeFile, fw)
 		case "restart":
@@ -462,6 +483,126 @@ func (fw *flushWriter) Write(p []byte) (n int, err error) {
 		fw.flusher.Flush()
 	}
 	return n, err
+}
+
+func (s *Server) handleSystemDiskUsage(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	report, err := s.dockerClient.GetSystemDiskUsage(ctx)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, report)
+}
+
+func (s *Server) handleSystemPorts(w http.ResponseWriter, r *http.Request) {
+	allocs, err := s.scanner.GetPortAllocations()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"allocations": allocs,
+	})
+}
+
+type pruneRequest struct {
+	Target string `json:"target"`
+}
+
+func (s *Server) handleSystemPrune(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req pruneRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if req.Target == "" {
+		req.Target = "all_safe"
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		respondError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+
+	detachedCtx := context.WithoutCancel(r.Context())
+	ctx, cancel := context.WithTimeout(detachedCtx, 5*time.Minute)
+	defer cancel()
+
+	fw := &flushWriter{w: w, flusher: flusher}
+	fmt.Fprintf(fw, "$ docker system prune (%s)\n\n", req.Target)
+
+	if err := s.dockerClient.PruneSystem(ctx, req.Target, fw); err != nil {
+		fmt.Fprintf(fw, "\n[ERROR] Prune failed: %v\n", err)
+		return
+	}
+
+	fmt.Fprintln(fw, "\n[SUCCESS] System prune completed successfully.")
+}
+
+type pruneItemRequest struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
+func (s *Server) handleSystemPruneItem(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req pruneItemRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	req.Type = strings.TrimSpace(req.Type)
+	req.ID = strings.TrimSpace(req.ID)
+	if req.Type == "" || req.ID == "" {
+		respondError(w, http.StatusBadRequest, "type and id are required")
+		return
+	}
+
+	validTypes := map[string]bool{
+		"image":       true,
+		"container":   true,
+		"volume":      true,
+		"build_cache": true,
+	}
+	if !validTypes[req.Type] {
+		respondError(w, http.StatusBadRequest, "invalid item type")
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		respondError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+
+	detachedCtx := context.WithoutCancel(r.Context())
+	ctx, cancel := context.WithTimeout(detachedCtx, 3*time.Minute)
+	defer cancel()
+
+	fw := &flushWriter{w: w, flusher: flusher}
+	fmt.Fprintf(fw, "$ docker %s rm %s\n\n", req.Type, req.ID)
+
+	if err := s.dockerClient.PruneItem(ctx, req.Type, req.ID, fw); err != nil {
+		fmt.Fprintf(fw, "\n[ERROR] Removal failed: %v\n", err)
+		return
+	}
+
+	fmt.Fprintf(fw, "\n[SUCCESS] Successfully removed %s '%s'.\n", req.Type, req.ID)
 }
 
 func (s *Server) handleStreamLogs(w http.ResponseWriter, r *http.Request) {
@@ -537,7 +678,7 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 			}
 
 			// 2. Enforce custom header on all mutating API calls except public auth endpoints (which use strict SameSite cookies & body parsing)
-			if strings.HasPrefix(r.URL.Path, "/api/stacks") {
+			if strings.HasPrefix(r.URL.Path, "/api/stacks") || strings.HasPrefix(r.URL.Path, "/api/system") {
 				if r.Header.Get("X-Composebox-Client") != "true" && !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 					respondError(w, http.StatusForbidden, "request blocked: missing X-Composebox-Client header")
 					return

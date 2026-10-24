@@ -131,3 +131,79 @@ export async function triggerAction(name, action, onChunk) {
 
   return { success: true, output: fullOutput };
 }
+
+export async function getDiskUsage() {
+  const res = await fetch('/api/system/df', { headers: clientHeaders });
+  if (!res.ok) throw new Error('Failed to load disk usage');
+  return res.json();
+}
+
+export async function pruneSystem(target = 'all_safe', onChunk) {
+  const res = await fetch('/api/system/prune', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ target }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(errText || 'Prune failed');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullOutput = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    fullOutput += chunk;
+    if (onChunk) {
+      onChunk(chunk, fullOutput);
+    }
+  }
+
+  if (fullOutput.includes('\n[ERROR] ') || fullOutput.startsWith('[ERROR] ')) {
+    throw new Error('Prune finished with error');
+  }
+
+  return { success: true, output: fullOutput };
+}
+
+export async function pruneItem(type, id, onChunk) {
+  const res = await fetch('/api/system/prune-item', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ type, id }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(errText || 'Item removal failed');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullOutput = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    fullOutput += chunk;
+    if (onChunk) {
+      onChunk(chunk, fullOutput);
+    }
+  }
+
+  if (fullOutput.includes('\n[ERROR] ') || fullOutput.startsWith('[ERROR] ')) {
+    throw new Error('Item removal failed');
+  }
+
+  return { success: true, output: fullOutput };
+}
+
+export async function getPorts() {
+  const res = await fetch('/api/system/ports', { headers: clientHeaders });
+  if (!res.ok) throw new Error('Failed to load port allocations');
+  return res.json();
+}
