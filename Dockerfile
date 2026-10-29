@@ -1,5 +1,5 @@
 # Stage 1: Build Svelte frontend natively on host architecture
-FROM --platform=$BUILDPLATFORM node:24-alpine AS ui-builder
+FROM --platform=$BUILDPLATFORM node:25-alpine AS ui-builder
 
 WORKDIR /app
 COPY ui/package.json ui/package-lock.json ./
@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
     -o /composebox ./cmd/composebox
 
 # Stage 3: Minimal production runtime for target architecture
-FROM alpine:3.23
+FROM alpine:3.24
 
 LABEL org.opencontainers.image.title="composebox" \
       org.opencontainers.image.description="A lightweight, single-binary manager for Docker Compose stacks" \
