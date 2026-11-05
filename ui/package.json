@@ -19,7 +19,7 @@
     "vite": "^8.3.5"
   },
   "dependencies": {
-    "@lucide/svelte": "^1.61.0",
-    "bits-ui": "^2.20.2"
+    "@lucide/svelte": "^1.66.0",
+    "bits-ui": "^2.20.3"
   }
 }
