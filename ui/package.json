@@ -13,13 +13,13 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
-    "@tailwindcss/vite": "^4.0.8",
+    "@tailwindcss/vite": "^4.3.5",
     "svelte": "^5.57.3",
     "tailwindcss": "^4.0.8",
-    "vite": "^8.3.5"
+    "vite": "^8.3.7"
   },
   "dependencies": {
-    "@lucide/svelte": "^1.66.0",
-    "bits-ui": "^2.20.3"
+    "@lucide/svelte": "^1.70.0",
+    "bits-ui": "^2.20.6"
   }
 }
