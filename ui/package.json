@@ -16,10 +16,10 @@
     "@tailwindcss/vite": "^4.3.5",
     "svelte": "^5.57.3",
     "tailwindcss": "^4.0.8",
-    "vite": "^8.3.7"
+    "vite": "^8.3.8"
   },
   "dependencies": {
-    "@lucide/svelte": "^1.70.0",
-    "bits-ui": "^2.20.6"
+    "@lucide/svelte": "^1.73.0",
+    "bits-ui": "^2.21.0"
   }
 }
