@@ -1,4 +1,4 @@
-.PHONY: all build ui test clean run docker
+.PHONY: all build ui test deps clean run docker
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -16,6 +16,10 @@ build: ui
 test:
 	go vet ./...
 	go test -v -race -count=1 ./...
+
+deps:
+	go get -u ./... && go mod tidy
+	cd ui && npm update
 
 run: build
 	./bin/composebox -port 8080 -stacks ./stacks
